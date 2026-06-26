@@ -54,6 +54,7 @@ interface ParsedPage {
 interface ParsedRow {
   cells: string[];
   pdfUrl: string | null;
+  pdfJsfAction: { componentId: string; paramUuid: string } | null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -119,15 +120,39 @@ const extractFormId = ($: $Root): string =>
 const extractPaginatorId = ($: $Root): string | null =>
   $('[id*="paginator"], [id*="pager"], .ui-paginator').first().attr('id') ?? null;
 
+const parsePaginatorText = ($: $Root): { currentPage: number; totalPages: number; totalRecords: number } | null => {
+  const text = $('.ui-paginator-current').first().text().trim();
+  const m = text.match(/P[aá]gina\s+(\d+)\s+de\s+(\d+)\s*\((\d+)\s+registros?\)/i);
+  if (!m) return null;
+  return { currentPage: parseInt(m[1], 10), totalPages: parseInt(m[2], 10), totalRecords: parseInt(m[3], 10) };
+};
+
 const pageHasNext = ($: $Root): boolean => {
+  const info = parsePaginatorText($);
+  if (info) return info.currentPage < info.totalPages;
   const btn = $('a.ui-paginator-next, [id*="next"]:not([disabled])').first();
   if (!btn.length) return false;
   return !btn.hasClass('ui-state-disabled') && btn.attr('aria-disabled') !== 'true';
 };
 
 const currentPageNum = ($: $Root): number => {
+  const info = parsePaginatorText($);
+  if (info) return info.currentPage;
   const text = $('.ui-paginator-page.ui-state-active, .paginacion-actual').first().text().trim();
   return text ? (parseInt(text, 10) || 0) : 0;
+};
+
+const parseJsfActionLink = (onclick: string | undefined): { componentId: string; paramUuid: string } | null => {
+  if (!onclick || !onclick.includes('mojarra.jsfcljs')) return null;
+  const m = onclick.match(/mojarra\.jsfcljs\s*\([^,]+,\s*\{([^}]+)\}/);
+  if (!m) return null;
+  const pairs = [...m[1].matchAll(/'([^']+)'\s*:\s*'([^']+)'/g)];
+  const map: Record<string, string> = {};
+  for (const [, k, v] of pairs) map[k] = v;
+  const paramUuid = map['param_uuid'];
+  if (!paramUuid) return null;
+  const componentId = Object.entries(map).find(([k, v]) => k === v)?.[0] ?? '';
+  return { componentId, paramUuid };
 };
 
 const parseRows = ($: $Root, config: SiteConfig, baseUrl: string): ParsedRow[] =>
@@ -137,12 +162,14 @@ const parseRows = ($: $Root, config: SiteConfig, baseUrl: string): ParsedRow[] =
       const cells = $(tr).find('td').toArray().map(td => $(td).text().trim());
       const pdfEl = $(tr).find(config.selectors.pdfLink).first();
       const rawHref = pdfEl.attr('href') ?? null;
-      const pdfUrl = !rawHref || rawHref.startsWith('#') || rawHref.startsWith('javascript')
+      const isAnchorOrVoid = !rawHref || rawHref === '#' || rawHref.startsWith('javascript');
+      const pdfUrl = isAnchorOrVoid
         ? null
         : rawHref.startsWith('http')
           ? rawHref
           : `${baseUrl}/${rawHref.replace(/^\//, '')}`;
-      return { cells, pdfUrl } satisfies ParsedRow;
+      const pdfJsfAction = isAnchorOrVoid ? parseJsfActionLink(pdfEl.attr('onclick')) : null;
+      return { cells, pdfUrl, pdfJsfAction } satisfies ParsedRow;
     })
     .filter(row => row.cells.some(c => c.length > 0));
 
@@ -458,6 +485,55 @@ const downloadPdf = async (session: Session, doc: JudicialDocument, pdfDir: stri
   }
 };
 
+const downloadJsfActionPdf = async (
+  session: Session,
+  config: SiteConfig,
+  viewState: string,
+  mojarra: { componentId: string; paramUuid: string },
+  doc: JudicialDocument,
+  pdfDir: string,
+): Promise<string | null> => {
+  const localPath = path.join(pdfDir, `${doc.id}.pdf`);
+  if (fs.existsSync(localPath)) return localPath;
+
+  const formId = config.search?.formId ?? 'form';
+  const params: [string, string][] = [
+    [formId, formId],
+    ...(mojarra.componentId ? [[mojarra.componentId, mojarra.componentId] as [string, string]] : []),
+    ['param_uuid', mojarra.paramUuid],
+    ['javax.faces.ViewState', viewState],
+  ];
+  const body = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+
+  try {
+    const resp = await session.client.post<ArrayBuffer>(config.startUrl, body, {
+      responseType: 'arraybuffer',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Referer': config.startUrl,
+        'Cookie': cookieHeader(session),
+        'Accept': 'application/pdf,application/octet-stream,*/*',
+      },
+    });
+    absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
+    const buf = Buffer.from(resp.data);
+    if (buf.length < 500) {
+      logger.warn('Mojarra PDF response too small', { paramUuid: mojarra.paramUuid, bytes: buf.length });
+      return null;
+    }
+    if (buf.slice(0, 4).toString('ascii') !== '%PDF') {
+      logger.warn('Mojarra response is not a PDF', { paramUuid: mojarra.paramUuid, magic: buf.slice(0, 4).toString('ascii') });
+      return null;
+    }
+    fs.writeFileSync(localPath, buf);
+    logger.info('Mojarra PDF saved', { file: path.basename(localPath), bytes: buf.length });
+    return localPath;
+  } catch (err) {
+    logger.error('Mojarra PDF error', { paramUuid: mojarra.paramUuid, error: (err as Error).message });
+    return null;
+  }
+};
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Validation
 // ──────────────────────────────────────────────────────────────────────────────
@@ -577,9 +653,14 @@ const scrapeSector = async (
     }
 
     if (pdfDir && !dryRun) {
-      for (const doc of toWrite) {
+      for (let j = 0; j < toWrite.length; j++) {
+        const doc = toWrite[j];
+        const row = page.rows[j];
         if (doc.pdfUrl) {
           doc.pdfLocalPath = await downloadPdf(session, doc, pdfDir);
+          await jitter(...config.timing.pdfDelayMs);
+        } else if (row.pdfJsfAction) {
+          doc.pdfLocalPath = await downloadJsfActionPdf(session, config, page.viewState, row.pdfJsfAction, doc, pdfDir);
           await jitter(...config.timing.pdfDelayMs);
         }
       }
