@@ -1,7 +1,7 @@
 {
   "name": "pj-peru-scraper",
   "version": "1.0.0",
-  "description": "TypeScript scraper for Peruvian judicial portals — HTTP-first with Puppeteer dev tools",
+  "description": "TypeScript HTTP scraper for Peruvian judicial portals — axios + cheerio, no browser automation",
   "type": "module",
   "scripts": {
     "build": "tsc",
@@ -17,9 +17,6 @@
   "devDependencies": {
     "@types/node": "20.14.10",
     "@types/yargs": "17.0.32",
-    "puppeteer": "22.15.0",
-    "puppeteer-extra": "3.3.6",
-    "puppeteer-extra-plugin-stealth": "2.11.2",
     "typescript": "5.5.3"
   }
 }
