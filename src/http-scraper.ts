@@ -48,6 +48,8 @@ interface ParsedPage {
   rows: ParsedRow[];
   hasNextPage: boolean;
   currentPage: number;
+  totalPages: number | null;
+  totalRecords: number | null;
   paginatorId: string | null;
 }
 
@@ -173,14 +175,19 @@ const parseRows = ($: $Root, config: SiteConfig, baseUrl: string): ParsedRow[] =
     })
     .filter(row => row.cells.some(c => c.length > 0));
 
-const parsePage = ($: $Root, config: SiteConfig, baseUrl: string): ParsedPage => ({
-  viewState: extractViewState($),
-  formId: extractFormId($),
-  rows: parseRows($, config, baseUrl),
-  hasNextPage: pageHasNext($),
-  currentPage: currentPageNum($),
-  paginatorId: extractPaginatorId($),
-});
+const parsePage = ($: $Root, config: SiteConfig, baseUrl: string): ParsedPage => {
+  const pag = parsePaginatorText($);
+  return {
+    viewState: extractViewState($),
+    formId: extractFormId($),
+    rows: parseRows($, config, baseUrl),
+    hasNextPage: pageHasNext($),
+    currentPage: pag?.currentPage ?? currentPageNum($),
+    totalPages: pag?.totalPages ?? null,
+    totalRecords: pag?.totalRecords ?? null,
+    paginatorId: extractPaginatorId($),
+  };
+};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Document transformation — pure functions
@@ -419,7 +426,16 @@ const submitSearch = async (
   if (ajax) {
     const { html, newViewState } = extractPartialResponse(resp.data);
     const $p = cheerioLoad(html ?? '<div></div>');
-    return { ...page, viewState: newViewState ?? page.viewState, rows: parseRows($p, config, config.baseUrl), hasNextPage: pageHasNext($p), currentPage: currentPageNum($p) };
+    const pag = parsePaginatorText($p);
+    return {
+      ...page,
+      viewState: newViewState ?? page.viewState,
+      rows: parseRows($p, config, config.baseUrl),
+      hasNextPage: pageHasNext($p),
+      currentPage: pag?.currentPage ?? currentPageNum($p),
+      totalPages: pag?.totalPages ?? page.totalPages,
+      totalRecords: pag?.totalRecords ?? page.totalRecords,
+    };
   }
 
   const $full = cheerioLoad(resp.data);
@@ -433,7 +449,6 @@ const fetchNextPage = async (
   targetPageIndex: number,
   rowsPerPage: number,
 ): Promise<{ $: $Root; newViewState: string | null }> => {
-  logger.info('POST page turn', { targetPage: targetPageIndex });
   const body = buildPaginationBody(page, targetPageIndex, rowsPerPage);
 
   const resp: AxiosResponse<string> = await session.client.post(url, body, {
@@ -451,7 +466,7 @@ const fetchNextPage = async (
 
   const { html, newViewState } = extractPartialResponse(resp.data);
   if (!html) {
-    logger.warn('Partial HTML empty — falling back to full GET');
+    logger.warn('Partial response empty — falling back to full GET', { targetPage: targetPageIndex });
     return { $: await fetchStartPage(session, url), newViewState: null };
   }
   return { $: cheerioLoad(html), newViewState };
@@ -518,18 +533,18 @@ const downloadJsfActionPdf = async (
     absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
     const buf = Buffer.from(resp.data);
     if (buf.length < 500) {
-      logger.warn('Mojarra PDF response too small', { paramUuid: mojarra.paramUuid, bytes: buf.length });
+      logger.warn('JSF action response too small — likely an error page', { paramUuid: mojarra.paramUuid, bytes: buf.length });
       return null;
     }
     if (buf.slice(0, 4).toString('ascii') !== '%PDF') {
-      logger.warn('Mojarra response is not a PDF', { paramUuid: mojarra.paramUuid, magic: buf.slice(0, 4).toString('ascii') });
+      logger.warn('JSF action response is not a PDF — server returned HTML or redirect', { paramUuid: mojarra.paramUuid, magic: buf.slice(0, 4).toString('ascii') });
       return null;
     }
     fs.writeFileSync(localPath, buf);
-    logger.info('Mojarra PDF saved', { file: path.basename(localPath), bytes: buf.length });
+    logger.info('PDF saved via JSF action POST', { file: path.basename(localPath), kb: Math.round(buf.length / 1024), via: 'jsf-action-post' });
     return localPath;
   } catch (err) {
-    logger.error('Mojarra PDF error', { paramUuid: mojarra.paramUuid, error: (err as Error).message });
+    logger.error('JSF action PDF download failed', { paramUuid: mojarra.paramUuid, error: (err as Error).message });
     return null;
   }
 };
@@ -605,6 +620,12 @@ const scrapeSector = async (
 
   let totalScraped = 0;
   let pageIndex = startPage;
+  const sectorStart = Date.now();
+
+  const elapsed = (): string => {
+    const sec = Math.round((Date.now() - sectorStart) / 1000);
+    return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
+  };
 
   const $initial = await withRetry(
     () => fetchStartPage(session, config.startUrl),
@@ -619,7 +640,13 @@ const scrapeSector = async (
       config.timing.retryWaitMs,
       `search-sector-${sectorId}`,
     );
-    logger.info('Search submitted', { sectorId, sectorName, rowsFound: page.rows.length });
+    logger.info('Search submitted — first page received', {
+      sector: `${sectorId}=${sectorName}`,
+      rowsFound: page.rows.length,
+      totalRecords: page.totalRecords ?? '?',
+      totalPages: page.totalPages ?? '?',
+      elapsed: elapsed(),
+    });
 
     if (page.rows.length === 0) {
       logger.warn('Zero results for sector — skipping', { sectorId, sectorName });
@@ -634,7 +661,8 @@ const scrapeSector = async (
       config.timing.retryWaitMs,
       `resume-nav-${i + 1}`,
     );
-    page = { ...page, viewState: newViewState ?? page.viewState, rows: parseRows(next$, config, config.baseUrl), hasNextPage: pageHasNext(next$), currentPage: currentPageNum(next$) };
+    const pag = parsePaginatorText(next$);
+    page = { ...page, viewState: newViewState ?? page.viewState, rows: parseRows(next$, config, config.baseUrl), hasNextPage: pageHasNext(next$), currentPage: pag?.currentPage ?? currentPageNum(next$), totalPages: pag?.totalPages ?? page.totalPages, totalRecords: pag?.totalRecords ?? page.totalRecords };
   }
 
   // Main pagination loop
@@ -666,11 +694,32 @@ const scrapeSector = async (
       }
     }
 
+    const pdfDownloaded = toWrite.filter(d => d.pdfLocalPath).length;
+    const pdfAvailable = toWrite.filter((doc, j) => doc.pdfUrl || page.rows[j]?.pdfJsfAction).length;
+
     totalScraped += toWrite.length;
     if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped);
-    logger.info('Progress', { sectorId, page: pageIndex, pageDocs: docs.length, total: totalScraped, hasNext: page.hasNextPage });
 
-    if (!page.hasNextPage) { logger.info('Last page reached', { sectorId, totalPages: pageIndex + 1 }); break; }
+    const elapsedSec = (Date.now() - sectorStart) / 1000;
+    const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
+    const remaining = page.totalRecords != null ? page.totalRecords - totalScraped : null;
+
+    logger.info('Page scraped', {
+      sector: `${sectorId}=${sectorName}`,
+      page: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : ''}`,
+      docsThisPage: docs.length,
+      totalScraped,
+      totalRecords: page.totalRecords ?? '?',
+      remaining: remaining != null ? remaining : '?',
+      pdfs: `${pdfDownloaded}/${pdfAvailable} downloaded`,
+      rate: docsPerMin != null ? `${docsPerMin} docs/min` : '—',
+      elapsed: elapsed(),
+    });
+
+    if (!page.hasNextPage) {
+      logger.info('Last page — sector complete', { sector: `${sectorId}=${sectorName}`, pagesProcessed: pageIndex + 1, totalScraped, elapsed: elapsed() });
+      break;
+    }
 
     await jitter(...config.timing.pageDelayMs);
 
@@ -679,18 +728,21 @@ const scrapeSector = async (
       config.timing.retryWaitMs,
       `page-${pageIndex + 1}-sector-${sectorId}`,
     );
+    const nextPag = parsePaginatorText(next$);
     page = {
       ...page,
       viewState: newViewState ?? page.viewState,
       rows: parseRows(next$, config, config.baseUrl),
       hasNextPage: pageHasNext(next$),
-      currentPage: currentPageNum(next$),
+      currentPage: nextPag?.currentPage ?? currentPageNum(next$),
+      totalPages: nextPag?.totalPages ?? page.totalPages,
+      totalRecords: nextPag?.totalRecords ?? page.totalRecords,
     };
     pageIndex++;
   }
 
   if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true);
-  logger.info('Sector complete', { sectorId, sectorName, totalScraped });
+  logger.info('Sector done', { sector: `${sectorId}=${sectorName}`, totalScraped, elapsed: elapsed() });
   return totalScraped;
 };
 
@@ -728,22 +780,38 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
 
   const out = opts.dryRun ? null : fs.createWriteStream(opts.outputPath, { flags: 'a' });
   let totalScraped = 0;
+  const runStart = Date.now();
 
   for (let i = 0; i < sectorsToRun.length; i++) {
     const [sectorId, sectorName] = sectorsToRun[i];
-    logger.info('Starting sector', { sectorId, sectorName, progress: `${i + 1}/${sectorsToRun.length}` });
+    logger.info(`── Sector ${i + 1}/${sectorsToRun.length}: ${sectorName ?? sectorId} ──`, { sectorId, sectorName });
     const session = makeSession(config.baseUrl, opts.proxy);
     const count = await scrapeSector(session, config, opts, sectorId, sectorName, out);
     totalScraped += count;
 
+    const runSec = Math.round((Date.now() - runStart) / 1000);
+    logger.info(`Sector ${i + 1}/${sectorsToRun.length} done`, {
+      sector: `${sectorId}=${sectorName}`,
+      sectorDocs: count,
+      totalSoFar: totalScraped,
+      runElapsed: runSec < 60 ? `${runSec}s` : `${Math.floor(runSec / 60)}m${runSec % 60}s`,
+    });
+
     if (i < sectorsToRun.length - 1) {
       const pause = 5_000 + Math.floor(Math.random() * 5_000);
-      logger.info('Inter-sector pause', { pauseMs: pause, nextSector: sectorsToRun[i + 1][0] });
+      const next = sectorsToRun[i + 1];
+      logger.info(`Pausing ${Math.round(pause / 1000)}s before next sector: ${next[1] ?? next[0]}`, { pauseMs: pause });
       await sleep(pause);
     }
   }
 
   out?.end();
   validateOutput(opts.outputPath, totalScraped, opts.dryRun);
-  logger.info('Scrape complete', { totalScraped, site: opts.site, output: opts.outputPath });
+  const totalSec = Math.round((Date.now() - runStart) / 1000);
+  logger.info('Run complete', {
+    site: opts.site,
+    totalScraped,
+    output: opts.outputPath,
+    totalElapsed: totalSec < 60 ? `${totalSec}s` : `${Math.floor(totalSec / 60)}m${totalSec % 60}s`,
+  });
 };
