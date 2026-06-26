@@ -1,0 +1,10 @@
+node_modules/
+dist/
+output/
+pdfs/
+logs/
+profile/
+chrome-profile/
+*.env
+.env.*
+CLAUDE.local.md
