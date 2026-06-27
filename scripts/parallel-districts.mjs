@@ -17,7 +17,7 @@
  */
 
 import { spawn } from 'child_process';
-import { mkdirSync, createReadStream, createWriteStream, statSync } from 'fs';
+import { mkdirSync, createReadStream, createWriteStream, statSync, readdirSync } from 'fs';
 import { pipeline } from 'stream/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -79,17 +79,54 @@ const outDir = 'output/pjperu-districts';
 mkdirSync(outDir, { recursive: true });
 if (pdfs) mkdirSync(pdfDir, { recursive: true });
 
-const entries = Object.entries(DISTRICTS);
-console.log(`\n${'='.repeat(70)}`);
-console.log(`  District Parallel Scrape -- pj-peru Superior (buCorte=2)`);
-console.log(`  ${entries.length} distritos | max ${maxWorkers} workers simultáneos | PDFs: ${pdfs ? 'SI' : 'NO'}`);
-console.log(`${'='.repeat(70)}\n`);
+const entries    = Object.entries(DISTRICTS);
+const totalDist  = entries.length;
+const slots      = Math.min(maxWorkers, totalDist);
+const runStart   = Date.now();
 
-const results = [];
-let idx = 0;
+const W = 70;
+const hr = (c = '-') => process.stdout.write(c.repeat(W) + '\n');
+
+hr('=');
+process.stdout.write(`  District Parallel Scrape -- pj-peru Superior (buCorte=2)\n`);
+process.stdout.write(`  ${totalDist} distritos | ${slots} workers | PDFs: ${pdfs ? `SI (conc ${pdfConc})` : 'NO'} | ${new Date().toLocaleTimeString()}\n`);
+hr('=');
+process.stdout.write('\n');
+
+// --- State tracking ---
+const results    = [];
+const startTimes = new Map();
+let activeCount  = 0;
+let doneCount    = 0;
+let idx          = 0;
+
+const pdfCount = () => {
+  try { return readdirSync(pdfDir).filter(f => f.endsWith('.pdf')).length; }
+  catch { return 0; }
+};
+
+const elapsed = (ms) => {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`;
+};
+
+const dashboard = () => {
+  const ok      = results.filter(r => r.code === 0).length;
+  const fail    = results.filter(r => r.code !== 0).length;
+  const pending = totalDist - doneCount - activeCount;
+  const pdfs_n  = pdfs ? ` | PDFs: ${pdfCount()}` : '';
+  const total_e = elapsed(Date.now() - runStart);
+  hr();
+  process.stdout.write(
+    `  [=] ${doneCount}/${totalDist} done | OK: ${ok} | FAIL: ${fail} | activos: ${activeCount} | pendientes: ${pending}${pdfs_n} | tiempo: ${total_e}\n`
+  );
+  hr();
+  process.stdout.write('\n');
+};
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// --- Spawn one district worker ---
 const spawnDistrict = (id, name) => new Promise(resolve => {
   const outFile = `${outDir}/district-${id}-${name}.jsonl`;
   const cliArgs = [
@@ -102,29 +139,36 @@ const spawnDistrict = (id, name) => new Promise(resolve => {
   if (resume)      { cliArgs.push('--resume'); }
   if (freshOutput) { cliArgs.push('--fresh-output'); }
 
+  startTimes.set(id, Date.now());
+  activeCount++;
+
   const pad = `[${(id + '=' + name).padEnd(20)}]`;
-  console.log(`  START ${pad} -> ${outFile}`);
+  process.stdout.write(`  START ${pad} slot ${activeCount}/${slots} | total ${idx}/${totalDist}\n`);
 
   const proc = spawn('node', cliArgs, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   proc.stdout.setMaxListeners(0);
   proc.stderr.setMaxListeners(0);
   proc.stdout.on('data', buf =>
-    buf.toString().split('\n').filter(Boolean).forEach(l => process.stdout.write(`${pad} ${l}\n`)));
+    buf.toString().split('\n').filter(Boolean).forEach(l => process.stdout.write(`  ${pad} ${l}\n`)));
   proc.stderr.on('data', buf =>
-    buf.toString().split('\n').filter(Boolean).forEach(l => process.stderr.write(`${pad} ERR ${l}\n`)));
+    buf.toString().split('\n').filter(Boolean).forEach(l => process.stderr.write(`  ${pad} ERR ${l}\n`)));
 
   proc.on('close', code => {
-    const icon = code === 0 ? 'OK  ' : 'FAIL';
-    console.log(`  ${icon} DONE  ${pad} exit ${code}`);
+    activeCount--;
+    doneCount++;
+    const dist_e = elapsed(Date.now() - startTimes.get(id));
+    const icon   = code === 0 ? 'OK  ' : 'FAIL';
+    process.stdout.write(`\n  ${icon} DONE  ${pad} exit ${code} | tiempo distrito: ${dist_e}\n`);
     results.push({ id, name, outFile, code });
+    dashboard();
     resolve();
   });
 });
 
-// Concurrency pool with startup jitter:
+// --- Concurrency pool with startup jitter ---
 // Each slot waits slotIdx * 600ms + random(800ms) before its FIRST launch.
-// This spreads 12 workers across ~8s, reducing concurrent search POSTs from 12 to ~6.
-const pool = Array.from({ length: Math.min(maxWorkers, entries.length) }, async (_, slotIdx) => {
+// This spreads workers across ~8s, reducing concurrent search POSTs at startup.
+const pool = Array.from({ length: slots }, async (_, slotIdx) => {
   const jitterMs = slotIdx * 600 + Math.random() * 800;
   if (slotIdx > 0) await sleep(jitterMs);
   while (idx < entries.length) {
@@ -134,17 +178,23 @@ const pool = Array.from({ length: Math.min(maxWorkers, entries.length) }, async 
 });
 await Promise.all(pool);
 
+// --- Final summary ---
 const ok     = results.filter(r => r.code === 0);
 const failed = results.filter(r => r.code !== 0);
 
-console.log(`\n${'='.repeat(70)}`);
-console.log(`  DISTRICTS COMPLETE — ${ok.length}/${entries.length} OK`);
-if (failed.length) console.log(`  FALLIDOS: ${failed.map(r => `${r.id}=${r.name}`).join(', ')}`);
-console.log(`${'='.repeat(70)}\n`);
+process.stdout.write('\n');
+hr('=');
+process.stdout.write(`  DISTRICTS COMPLETE\n`);
+process.stdout.write(`  OK: ${ok.length}/${totalDist} | FAIL: ${failed.length} | tiempo total: ${elapsed(Date.now() - runStart)}\n`);
+if (pdfs) process.stdout.write(`  PDFs descargados: ${pdfCount()}\n`);
+if (failed.length) process.stdout.write(`  FALLIDOS: ${failed.map(r => `${r.id}=${r.name}`).join(', ')}\n`);
+hr('=');
+process.stdout.write('\n');
 
+// --- Merge OK outputs ---
 if (!dryRun && ok.length > 0) {
   const mergedPath = `${outDir}/all-districts.jsonl`;
-  console.log(`  >> Merging -> ${mergedPath}`);
+  process.stdout.write(`  >> Merging ${ok.length} archivos -> ${mergedPath}\n`);
   const writer = createWriteStream(mergedPath, { flags: 'w' });
   writer.setMaxListeners(0);
   for (const { outFile } of ok) {
@@ -155,6 +205,6 @@ if (!dryRun && ok.length > 0) {
   await new Promise(res => writer.on('finish', res));
   try {
     const kb = (statSync(mergedPath).size / 1024).toFixed(0);
-    console.log(`  OK Merged: ${mergedPath} (${kb} KB)\n`);
+    process.stdout.write(`  OK Merged: ${mergedPath} (${kb} KB)\n\n`);
   } catch {}
 }

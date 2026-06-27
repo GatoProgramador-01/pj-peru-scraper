@@ -8,8 +8,12 @@ export interface JudicialDocument {
   caseNumber: string;      // Número de expediente
   court: string | null;    // Sala / Juzgado / Unidad fiscalizable
   date: string | null;     // ISO date or resolution number
-  summary: string | null;  // Administrado / Sumilla
+  summary: string | null;  // Pretensión/Delito (pj-peru) or Administrado (oefa)
   resolution: string | null;
+  // pj-peru specific fields
+  tipoRecurso: string | null;    // Apelación, Casación, etc.
+  sumilla: string | null;        // Sumilla text (distinct from summary/pretensión)
+  palabrasClave: string | null;  // Palabras Clave from panel body
   pdfUrl: string | null;   // Absolute URL to PDF (null if confidential or JS-only)
   pdfLocalPath: string | null;
   pageIndex: number;       // 0-based page number where found

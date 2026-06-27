@@ -18,6 +18,9 @@ export interface ParsedRow {
   cells: string[];
   pdfUrl: string | null;
   pdfJsfAction: JsfAction | null;
+  tipoRecurso?: string;
+  sumilla?: string;
+  palabrasClave?: string;
 }
 
 export interface ParsedPage {

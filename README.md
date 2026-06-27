@@ -276,10 +276,15 @@ Con `scrape:oefa:parallel`: todos los sectores en paralelo, tiempo total = secto
 | --- | ---: | ---: | ---: | ---: | --- |
 | Prueba inicial (5 docs) | 5 | 5 | 0 | 0 | 35s |
 | Corrida validacion (100 docs, 10 paginas) | 100 | 100 | 0 | 0 | ~7m |
-| Test distritos v1 — 20 workers, pdf-concurrency 20 | 1,350 | 50 | 7 distritos (79%)* | 0 | ~3.5m |
-| Test distritos v2 — 20 workers, pdf-concurrency 5 | ~1,700 | ~425 | objetivo &lt;5% | 0 | ~5m |
+| Test distritos v1 — 20 workers, pdf-concurrency 20 | 1,350 | 50 | 10/34 (29%)* | 0 | ~3.5m |
+| Test distritos v2 — 20 workers, pdf-concurrency 5 | 1,200 | 50† | 10/34 (29%) | 0 | ~5m |
+| Test distritos v3 — 12 workers, pdf-concurrency 5 | 1,500 | 50† | 4/34 (12%) | 0 | ~8m |
+| Validacion PDF aislada — Lima (d18), 20 docs, fresh dir | 20 | 20 | 0 | 0 | ~1m33s |
 
-> *Root cause analizado: PDF concurrency 20 × 20 workers = 400 conexiones simultáneas a `/ServletDescarga` → saturacion. Solución: pdf-concurrency 5 por worker (100 totales). Startup jitter elimino los fallos de busqueda inicial (34/34 OK en dry-run).
+> *Root cause: 400 conexiones simultaneas a `/ServletDescarga` (20 workers × 20 pdf-conc) → saturacion. Fix: pdf-concurrency 5 por worker.
+> †PDFs contados como `skippedExisting` porque el directorio compartido ya tenia los archivos de corridas anteriores. Test aislado de Lima confirma 20/20 descargados, 45 PDFs/min, latencia avg 2055ms, 100% headers `%PDF-` validos.
+
+**PDF integrity check (10 muestras de `output/pjperu-districts/pdfs/`):** 10/10 headers `%PDF-` validos, 282–1005 KB por archivo, 0 corruptos.
 
 **Escala real del dataset (medida en vivo):**
 
@@ -356,13 +361,14 @@ En el test inicial con 20 workers sin jitter, 7 de 34 distritos fallaron (79% de
 
 **Por que ocurre:** El servidor JSF/RichFaces mantiene un pool de sesiones y ViewStates activos en memoria. Cuando 20 procesos arrancan exactamente al mismo tiempo y todos hacen GET + POST de busqueda en el mismo segundo, el pool se satura y algunos requests reciben respuestas vacias en lugar de un error explicito.
 
-**Las 3 mejoras implementadas:**
+**Las 4 mejoras implementadas:**
 
 | Mejora | Donde | Efecto |
 | --- | --- | --- |
 | **Startup jitter** | `parallel-districts.mjs` | Cada worker espera `slotIdx × 600ms + random(800ms)` antes de arrancar. Los 20 workers se distribuyen en ~14 segundos en lugar de arrancar todos a la vez. Elimina la saturacion inicial. |
 | **Full jitter en retries** | `src/session/retry.ts` | Los reintentos usan `base/2 + random(base/2)` en lugar de tiempos fijos. Evita que todos los workers fallidos reintenten al mismo segundo, lo que volveria a saturar el servidor. |
-| **`setMaxListeners(0)`** | `parallel-districts.mjs` | Suprime el warning de Node.js sobre event listeners al tener 20+ streams activos. No afecta funcionalidad, solo limpieza de logs. |
+| **Inter-page delay 300–700ms** | `src/config.ts` + `src/scraper/sectorScraper.ts` | Delay aleatorio ANTES de cada `fetchNextPage`. Workers que empiezan a la vez y navegan al mismo ritmo se van desincronizando pagina a pagina — la carga AJAX se distribuye en el tiempo en lugar de llegar en oleadas sincronizadas. Pendiente validar impacto en tasa de exito. |
+| **`setMaxListeners(0)`** | `parallel-districts.mjs` | Suprime el warning de Node.js sobre event listeners al tener 20+ streams activos en stdout/stderr y en el WriteStream de fusion. No afecta funcionalidad. |
 
 ### Comandos de paralelismo distrital
 
@@ -443,6 +449,46 @@ Configuracion validada en `src/config.ts` bajo la clave `pj-peru`. Para correr:
 # Con VPN peru activa:
 node dist/cli.js --site pj-peru --limit 10 --dry-run
 node dist/cli.js --site pj-peru --limit 100 --pdfs --pdf-dir output/pjperu/pdfs --out output/pjperu/pj-peru-documents.jsonl
+```
+
+## Agenda Proxima Sesion — Maximizar PDFs
+
+**Estado al cierre de sesion 2026-06-27:**
+
+- Output limpio: `output/pjperu-districts/` (3,040 docs de prueba, 50 PDFs reales)
+- Checkpoints activos: 34 districts + Suprema + Superior
+- Ultimo commit: `4fa6502` — inter-page delay + --fresh-output passthrough
+- **VPN requerida para retomar** — sin VPN el portal retorna 0 resultados en busqueda
+
+**Tasa de exito actual por concurrencia:**
+
+| Workers | Exitosos | Tasa | Estado |
+| ---: | ---: | --- | --- |
+| 20 | 24/34 | 71% | demasiado alto |
+| 12 | 30/34 | 88% | mejor, pendiente validar con inter-page delay |
+| 12 + delay 300-700ms | pendiente | ? | primera prueba del dia |
+
+**Objetivo del dia — en orden:**
+
+1. **Reconectar VPN Peru** y verificar con `node dist/cli.js --site pj-peru --dry-run --limit 5`.
+2. **Test de 10 min con inter-page delay**: `node scripts/parallel-districts.mjs --limit 50 --concurrency 12 --pdf-concurrency 5 --fresh-output` — objetivo 34/34.
+3. Si hay fallas, bajar a `--concurrency 8` y medir (deberia caber en 10 min).
+4. **Lanzar produccion en background** (3h): `npm run scrape:pjperu:districts` (concurrency optima, con PDFs).
+5. **Investigar limite de PDF concurrency**: con 12 workers y la sesion en calma, probar subir `--pdf-concurrency` de 5 a 8 y medir si hay errores. El objetivo es maximizar PDFs/min sin saturar `/ServletDescarga`.
+6. **Implementar script pdf-only** (`scripts/pdf-only.mjs`): leer JSONL existente y descargar PDFs sin re-navegar el portal. Permite reintentar solo PDFs fallidos con concurrencia alta sin tocar la sesion JSF.
+
+**Por que solo 50 PDFs hasta ahora:** todos los tests usaron `--limit 50` por worker y el directorio compartido de PDFs marcaba los archivos previos como `skippedExisting`. La validacion aislada (Lima d18, directorio fresco) confirmo 20/20 PDFs descargados a 45 PDFs/min. El mecanismo es correcto; la produccion descargara miles.
+
+**Comando de inicio manana (con VPN activa):**
+```bash
+# 1. Verificar VPN
+node dist/cli.js --site pj-peru --dry-run --limit 5
+
+# 2. Test con delay (10 min)
+node scripts/parallel-districts.mjs --limit 50 --concurrency 12 --pdf-concurrency 5 --fresh-output 2>&1 | grep -E "(DONE|COMPLETE|FALLIDOS)"
+
+# 3. Si 34/34: produccion (~3h, no bloquea terminal)
+Start-Process node -ArgumentList "scripts/parallel-districts.mjs","--pdfs","--pdf-dir","output/pjperu-districts/pdfs","--pdf-concurrency","5","--concurrency","12" -WindowStyle Normal
 ```
 
 ## Checklist De Entrega

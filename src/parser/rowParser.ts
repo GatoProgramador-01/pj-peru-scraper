@@ -8,9 +8,11 @@ const extractLabeledField = ($: $Root, container: ReturnType<$Root>, label: stri
   return block.next().text().trim();
 };
 
-/** pj-peru: results are RF repeat panels, not <tr> rows. Each panel has header + body divs. */
+/** pj-peru: results are RF repeat panels, not <tr> rows. Each panel has header + body divs.
+ *  Selector uses div.rf-p class — stable across JSF sessions (j_idtXXX suffix changes per session).
+ */
 const parseRichFacesRepeatRows = ($: $Root, baseUrl: string): ParsedRow[] => {
-  const panels = $('[id^="formBuscador:repeat:"][id$=":j_idt455"]').toArray();
+  const panels = $('div.rf-p[id^="formBuscador:repeat:"]').toArray();
   return panels.map(panel => {
     const $el = $(panel);
     const headerSpans = $el.find('.rf-p-hdr span[style*="bold"]').toArray();
@@ -18,11 +20,12 @@ const parseRichFacesRepeatRows = ($: $Root, baseUrl: string): ParsedRow[] => {
     const expediente = $(headerSpans[1])?.text().trim() ?? '';
 
     const body = $el.find('.rf-p-b').first();
-    const pretension = extractLabeledField($, body, 'Pretensión');
+    const pretension     = extractLabeledField($, body, 'Pretensión');
     const tipoResolucion = extractLabeledField($, body, 'Tipo Resolución');
     const fechaResolucion = extractLabeledField($, body, 'Fecha Resolución');
-    const sala = extractLabeledField($, body, 'Sala');
-    const sumilla = extractLabeledField($, body, 'Sumilla');
+    const sala           = extractLabeledField($, body, 'Sala');
+    const sumilla        = extractLabeledField($, body, 'Sumilla');
+    const palabrasClave  = extractLabeledField($, body, 'Palabras Clave');
 
     const pdfAnchor = $el.find('a[href*="ServletDescarga"]').first();
     const rawHref = pdfAnchor.attr('href') ?? null;
@@ -31,7 +34,7 @@ const parseRichFacesRepeatRows = ($: $Root, baseUrl: string): ParsedRow[] => {
       : null;
 
     const cells = [tipoRecurso, expediente, pretension, tipoResolucion, fechaResolucion, sala, sumilla];
-    return { cells, pdfUrl, pdfJsfAction: null } satisfies ParsedRow;
+    return { cells, pdfUrl, pdfJsfAction: null, tipoRecurso, sumilla, palabrasClave } satisfies ParsedRow;
   }).filter(row => row.cells.some(c => c.length > 0));
 };
 
