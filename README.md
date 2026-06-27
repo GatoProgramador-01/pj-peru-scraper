@@ -6,7 +6,7 @@ El foco actual es OEFA: extraer resoluciones del Tribunal de Fiscalizacion Ambie
 
 ## Estado Corto
 
-El repo esta en Sprint 3. La base modular HTTP ya esta funcionando y el test controlado de 100 documentos OEFA esta validado.
+El repo esta en Sprint 3, ahora enfocado en velocidad de extraccion. La base modular HTTP ya esta funcionando, el test controlado de 100 documentos OEFA esta validado, y ya hay corridas sectoriales completas o parciales con evidencia local.
 
 | Area | Estado |
 | --- | --- |
@@ -15,20 +15,40 @@ El repo esta en Sprint 3. La base modular HTTP ya esta funcionando y el test con
 | Confidenciales OEFA | Clasificados como `confidential`, no como error |
 | Reportes de corrida | `run-summary.json`, `page-events.jsonl`, `run-report.md`, `failed-pdfs.json` |
 | Display de terminal | Banners, fases, progreso de PDFs y resumen final |
-| Sector MINERIA | Corrida parcial observada en `output/mineria` |
+| Sector MINERIA | Completo: 840 docs, 265 PDFs, 44 confidenciales, 10 failed, 3m0s |
+| Sector ELECTRICIDAD | Completo: 125 docs, 2m (segunda corrida sin VPN, cache) |
+| Sector PESQUERIA | Completo: 255 docs, 233 PDFs, 16 confidenciales, 6 failed, 2m13s |
+| Sector HIDROCARBUROS | Completo: 434 docs, 4m11s |
+| Sector INDUSTRIA | Completo: 70 docs, 27s |
 | PJ Peru | Pendiente de recon/validacion con IP peruana o proxy |
 
-Estado observado en esta revision local:
+Sprint de performance completo — 1,724 documentos totales OEFA, 5 sectores, sin VPN.
 
-| Artefacto | Valor |
-| --- | ---: |
-| `output/mineria/oefa-documents.jsonl` | 420 lineas |
-| IDs unicos en mineria | 415 |
-| Registros mineria con `pdfLocalPath` | 382 |
-| PDFs en `output/mineria/pdfs` | 377 |
-| Checkpoint mineria | `lastPageIndex: 41`, `totalScraped: 420`, `completed: false` |
+| Sector | Docs | Duracion | PDFs ok | Confidenciales | Failed | HTTP 429 |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| ELECTRICIDAD | 125 | 2m (cache) | 120 | 0 | 5 | 0 |
+| INDUSTRIA | 70 | 27s | 70 | 0 | 0 | 0 |
+| PESQUERIA | 255 | 2m13s | 233 | 16 | 6 | 0 |
+| HIDROCARBUROS | 434 | 4m11s | ~410 | ~20 | ~4 | 0 |
+| MINERIA | 840 | 3m0s | 786 | 44 | 10 | 0 |
 
 Nota: los conteos de `pdfLocalPath` y archivos locales pueden diferir si el JSONL viene de corridas append/resume o si hubo archivos previos. Para auditoria final, usar `run-summary.json` cuando exista y regenerar con `--fresh-output` si se necesita una corrida limpia.
+
+## Sprint De Performance (completado)
+
+Objetivo: reducir el tiempo total de extraccion sin perder trazabilidad. Resultado: 5 sectores OEFA completos, 1,724 documentos, sin VPN, sin rate limiting.
+
+Cambios de performance aplicados y validados:
+
+| Cambio | Resultado observado |
+| --- | --- |
+| `pageDelayMs: [0, 0]` | 0 HTTP 429 en todos los sectores |
+| `pdfDelayMs: [0, 0]` | Sin efecto adverso; XML redirect failures registradas en `failed-pdfs.json` |
+| `--pdf-concurrency 12-20` | MINERIA 840 docs en 3m, PESQUERIA 255 docs en 2m13s |
+| Throw en AJAX partial vacio (en vez de fallback silencioso) | Elimino truncacion silenciosa de datos al solapar POSTs JSF |
+| Auto-retry con sesion fresca en zero-records transient | Elimino perdida de sector por glitch transitorio del servidor |
+
+Nota: el prefetch de pagina mientras bajan PDFs fue evaluado y revertido — los 20 POST JSF concurrentes sobrecargaban el session state del servidor y producian respuestas vacias.
 
 ## Como Pensar El Sistema
 
@@ -116,12 +136,11 @@ flowchart TD
     Page --> Rows{"Hay filas?"}
     Rows -->|No| NextSector{"Otro sector?"}
     Rows -->|Si| Docs["Mapear filas a JudicialDocument"]
-    Docs --> PdfFlow["Resolver PDFs de la pagina"]
+    Docs --> PdfFlow["Resolver PDFs de la pagina (concurrente)"]
     PdfFlow --> Write["Escribir JSONL despues de PDFs"]
     Write --> Checkpoint["Guardar checkpoint"]
     Checkpoint --> MorePages{"Hay siguiente pagina?"}
-    MorePages -->|Si| Delay["Jitter entre paginas"]
-    Delay --> NextPost["POST PrimeFaces paginator"]
+    MorePages -->|Si| NextPost["POST PrimeFaces paginator"]
     NextPost --> Page
     MorePages -->|No| NextSector
     NextSector -->|Si| Pause["Pausa 5-10s y nueva sesion"]
@@ -303,7 +322,7 @@ Variables del probe:
 
 ## Sprint 3
 
-Objetivo del Sprint 3: convertir la extraccion de OEFA en una corrida completa y revisable, especialmente para el sector MINERIA.
+Objetivo del Sprint 3: convertir la extraccion de OEFA en una corrida completa, revisable y mas rapida, especialmente para los sectores grandes como MINERIA.
 
 Completado hasta HEAD actual:
 
@@ -317,14 +336,17 @@ Completado hasta HEAD actual:
 - PDF directory se recrea antes de cada batch, para sobrevivir a borrados durante la corrida.
 - Descargas PDF en batches con `--pdf-concurrency`.
 - Flush de stdout ajustado para ver progreso tambien en pipes de Windows.
+- Sprint de performance completo: 5 sectores OEFA, 1,724 documentos totales, sin VPN, sin HTTP 429.
+- `pageDelayMs` y `pdfDelayMs` en cero validados sin rate limiting.
+- Concurrencia PDF escalada a 20 sin ban.
+- Bug de truncacion silenciosa corregido (`pagination.ts`: throw en AJAX vacio).
+- Retry automatico con sesion fresca en zero-records transient (`scraper.ts`).
 
 Pendiente recomendado:
 
-- Completar MINERIA hasta `completed: true`.
-- Regenerar artefactos de mineria en una corrida limpia si se requiere auditoria exacta.
-- Revisar duplicados de ID cuando se usa resume/append.
 - Cargar JSONL y `page-events.jsonl` a DB de prueba.
-- Validar PJ Peru con proxy/VPN peruana.
+- Crear script de retry automatico para `failed-pdfs.json` (XML redirect failures).
+- Validar PJ Peru con proxy/VPN peruana: `npm run recon -- --site pj-peru`.
 
 ## Guia De Revision Multiagente
 
