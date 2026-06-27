@@ -9,17 +9,18 @@ import { extractPartialResponse } from './partialResponse.js';
 
 export const buildPaginationBody = (page: ParsedPage, targetPageIndex: number, rowsPerPage: number): string => {
   const paginatorId = page.paginatorId ?? `${page.formId}:j_idt_paginator`;
+  const dataTableId = paginatorId.replace(/_paginator(?:_[^:]+)?$/, '');
   const params: [string, string][] = [
     ['javax.faces.partial.ajax', 'true'],
-    ['javax.faces.source', paginatorId],
-    ['javax.faces.partial.execute', paginatorId],
-    ['javax.faces.partial.render', page.formId],
-    ['javax.faces.behavior.event', 'page'],
-    [`${paginatorId}_pagination`, 'true'],
-    [`${paginatorId}_first`, String(targetPageIndex * rowsPerPage)],
-    [`${paginatorId}_rows`, String(rowsPerPage)],
-    [`${paginatorId}_page`, String(targetPageIndex)],
+    ['javax.faces.source', dataTableId],
+    ['javax.faces.partial.execute', dataTableId],
+    ['javax.faces.partial.render', dataTableId],
     [page.formId, page.formId],
+    [`${dataTableId}_pagination`, 'true'],
+    [`${dataTableId}_first`, String(targetPageIndex * rowsPerPage)],
+    [`${dataTableId}_rows`, String(rowsPerPage)],
+    [`${dataTableId}_skipChildren`, 'true'],
+    [`${dataTableId}_encodeFeature`, 'true'],
     ['javax.faces.ViewState', page.viewState],
   ];
   return params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
@@ -52,5 +53,8 @@ export const fetchNextPage = async (
     logger.warn('Partial response empty — falling back to full GET', { targetPage: targetPageIndex });
     return { $: await fetchStartPage(session, url), newViewState: null };
   }
-  return { $: cheerioLoad(html), newViewState };
+  const fragment = html.trim().startsWith('<tr')
+    ? `<table><tbody>${html}</tbody></table>`
+    : html;
+  return { $: cheerioLoad(fragment), newViewState };
 };

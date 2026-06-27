@@ -3,7 +3,7 @@ import type { SiteConfig } from '../types.js';
 import { parseJsfActionLink } from '../jsf/actionLink.js';
 
 export const parseRows = ($: $Root, config: SiteConfig, baseUrl: string): ParsedRow[] =>
-  $(config.selectors.rows)
+  ($(config.selectors.rows).length ? $(config.selectors.rows) : $('tr[data-ri]'))
     .toArray()
     .map(tr => {
       const cells = $(tr).find('td').toArray().map(td => $(td).text().trim());

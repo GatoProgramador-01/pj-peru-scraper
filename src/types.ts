@@ -83,6 +83,7 @@ export interface ScrapeOptions {
   site: string;
   outputPath: string;
   pdfDir: string | null;
+  failedPdfPath?: string | null;
   limit: number | null;
   dryRun: boolean;
   proxy: string | null;
@@ -90,6 +91,7 @@ export interface ScrapeOptions {
   profile: string | null;
   resume: boolean;         // true = load per-sector checkpoints; false = fresh start
   sectorId: string | null; // null = scrape all sectors; string = specific sector only
+  pdfConcurrency?: number; // direct PDF URL downloads only; JSF action PDFs remain sequential
 }
 
 export interface Checkpoint {

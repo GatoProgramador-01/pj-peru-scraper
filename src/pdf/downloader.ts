@@ -2,13 +2,18 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../logger.js';
 import type { JsfAction, Session } from '../models/internalTypes.js';
+import type { PdfDownloadResult } from '../models/metrics.js';
 import type { JudicialDocument, SiteConfig } from '../types.js';
 import { absorbCookies, cookieHeader } from '../session/cookies.js';
 
-export const downloadPdf = async (session: Session, doc: JudicialDocument, pdfDir: string): Promise<string | null> => {
-  if (!doc.pdfUrl) return null;
+export const downloadPdf = async (session: Session, doc: JudicialDocument, pdfDir: string): Promise<PdfDownloadResult> => {
+  const startedAt = Date.now();
+  if (!doc.pdfUrl) return { status: 'missingPdfUrl', localPath: null, latencyMs: 0 };
+
   const localPath = path.join(pdfDir, `${doc.id}.pdf`);
-  if (fs.existsSync(localPath)) return localPath;
+  if (fs.existsSync(localPath)) {
+    return { status: 'skippedExisting', localPath, latencyMs: Date.now() - startedAt };
+  }
 
   try {
     const resp = await session.client.get<ArrayBuffer>(doc.pdfUrl, {
@@ -16,16 +21,13 @@ export const downloadPdf = async (session: Session, doc: JudicialDocument, pdfDi
       headers: { Referer: session.baseUrl, Accept: 'application/pdf,*/*', Cookie: cookieHeader(session) },
     });
     const buf = Buffer.from(resp.data);
-    if (buf.length < 500) {
-      logger.warn('PDF suspiciously small — skipping', { url: doc.pdfUrl, bytes: buf.length });
-      return null;
-    }
     fs.writeFileSync(localPath, buf);
     logger.info('PDF saved', { file: path.basename(localPath), bytes: buf.length });
-    return localPath;
+    return { status: 'downloaded', localPath, latencyMs: Date.now() - startedAt };
   } catch (err) {
-    logger.error('PDF download error', { url: doc.pdfUrl, error: (err as Error).message });
-    return null;
+    const error = (err as Error).message;
+    logger.error('PDF download error', { url: doc.pdfUrl, error });
+    return { status: 'failedDownload', localPath: null, latencyMs: Date.now() - startedAt, error };
   }
 };
 
@@ -36,9 +38,12 @@ export const downloadJsfActionPdf = async (
   mojarra: JsfAction,
   doc: JudicialDocument,
   pdfDir: string,
-): Promise<string | null> => {
+): Promise<PdfDownloadResult> => {
+  const startedAt = Date.now();
   const localPath = path.join(pdfDir, `${doc.id}.pdf`);
-  if (fs.existsSync(localPath)) return localPath;
+  if (fs.existsSync(localPath)) {
+    return { status: 'skippedExisting', localPath, latencyMs: Date.now() - startedAt };
+  }
 
   const formId = config.search?.formId ?? 'form';
   const params: [string, string][] = [
@@ -61,19 +66,17 @@ export const downloadJsfActionPdf = async (
     });
     absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
     const buf = Buffer.from(resp.data);
-    if (buf.length < 500) {
-      logger.warn('JSF action response too small — likely an error page', { paramUuid: mojarra.paramUuid, bytes: buf.length });
-      return null;
-    }
     if (buf.slice(0, 4).toString('ascii') !== '%PDF') {
-      logger.warn('JSF action response is not a PDF — server returned HTML or redirect', { paramUuid: mojarra.paramUuid, magic: buf.slice(0, 4).toString('ascii') });
-      return null;
+      const magic = buf.slice(0, 4).toString('ascii');
+      logger.warn('JSF action response is not a PDF - server returned HTML or redirect', { paramUuid: mojarra.paramUuid, magic });
+      return { status: 'failedDownload', localPath: null, latencyMs: Date.now() - startedAt, error: `JSF action response is not a PDF: ${magic}` };
     }
     fs.writeFileSync(localPath, buf);
     logger.info('PDF saved via JSF action POST', { file: path.basename(localPath), kb: Math.round(buf.length / 1024), via: 'jsf-action-post' });
-    return localPath;
+    return { status: 'downloaded', localPath, latencyMs: Date.now() - startedAt };
   } catch (err) {
-    logger.error('JSF action PDF download failed', { paramUuid: mojarra.paramUuid, error: (err as Error).message });
-    return null;
+    const error = (err as Error).message;
+    logger.error('JSF action PDF download failed', { paramUuid: mojarra.paramUuid, error });
+    return { status: 'failedDownload', localPath: null, latencyMs: Date.now() - startedAt, error };
   }
 };

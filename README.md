@@ -388,3 +388,76 @@ node dist/cli.js --site pj-peru \
 ---
 
 *Proyecto desarrollado como desafío técnico de scraping para portales judiciales y ambientales del Perú.*
+
+## Test run: 100 records + PDFs
+
+Use this controlled run to collect 100 OEFA records, attempt the matching PDF downloads, and log baseline metrics without running a larger stress test.
+
+```bash
+npm run scrape:oefa:test100
+```
+
+The command builds the project and runs:
+
+```bash
+node dist/cli.js --site oefa --limit 100 --pdfs \
+  --pdf-dir output/test100/pdfs \
+  --out output/test100/oefa-documents.jsonl \
+  --pdf-concurrency 4 \
+  --fresh-output
+```
+
+Outputs:
+- `output/test100/oefa-documents.jsonl`: the 100 JSONL records when 100 results are available.
+- `output/test100/pdfs/`: downloaded PDFs for those records.
+- `output/test100/failed-pdfs.json`: non-downloaded PDF records, including `missingPdfUrl`, `missingJsfAction`, or `failedDownload`.
+
+Metrics are logged at the end of the run:
+- `totalDocumentsCollected`
+- `totalPdfCandidates`
+- `totalPdfDownloaded`
+- `totalPdfFailed`
+- `totalPdfMissing`
+- `totalSkippedExisting`
+- `total429`
+- `totalRetries`
+- `elapsedTime`
+- `docsPerMinute`
+- `pdfsPerMinute`
+- `avgPdfLatencyMs`
+
+`pdfLocalPath` is written to the JSONL only after each page's PDF attempts finish, so successful or already-existing PDFs appear in the final record. JSF action PDF downloads stay sequential because they reuse the page ViewState and session cookies. `PDF_CONCURRENCY` / `--pdf-concurrency` only applies to direct PDF URLs.
+
+To retry failed PDFs, rerun the same command. Existing PDFs are reported as `skippedExisting`, and failed or missing records are regenerated in `failed-pdfs.json`. To test a different concurrency level:
+
+```bash
+node dist/cli.js --site oefa --limit 100 --pdfs \
+  --pdf-dir output/test100/pdfs \
+  --out output/test100/oefa-documents.jsonl \
+  --pdf-concurrency 1 \
+  --fresh-output
+```
+
+### Controlled 429 probe
+
+To intentionally look for HTTP 429 behavior without mixing it into the 100-record PDF run:
+
+```bash
+npm run probe:oefa:429
+```
+
+Defaults:
+- `PROBE_429_TOTAL=500`
+- `PROBE_429_CONCURRENCY=20`
+- `PROBE_429_STOP_ON_FIRST=true`
+- output: `output/test429/probe429.json`
+
+Example with a larger probe:
+
+```powershell
+$env:PROBE_429_TOTAL='1500'; $env:PROBE_429_CONCURRENCY='40'; npm run probe:oefa:429
+```
+
+The probe exits with code `2` if no 429 was observed inside the configured request budget. If a 429 appears, the report captures `total429`, `first429AtRequest`, status counts, and any `Retry-After` values.
+
+Small PDFs are not discarded. Direct PDF responses are saved as returned, and JSF action responses are saved when they start with `%PDF`, regardless of byte size. Non-PDF JSF responses are still recorded as `failedDownload`.
