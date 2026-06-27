@@ -418,6 +418,7 @@ Metrics are logged at the end of the run:
 - `totalPdfDownloaded`
 - `totalPdfFailed`
 - `totalPdfMissing`
+- `totalPdfConfidential`
 - `totalSkippedExisting`
 - `total429`
 - `totalRetries`
@@ -471,3 +472,41 @@ Each non-dry run now writes review artifacts next to the JSONL output:
 - `run-report.md`: compact human-readable report for reviewers.
 
 Confidential OEFA rows are reported as `status: "confidential"` in `failed-pdfs.json`. These are expected unavailable PDFs, not scraper failures.
+
+## Sprint 2 log: controlled OEFA validation
+
+**Goal:** Validate the refactored HTTP scraper with a controlled OEFA run: 100 records, PDF attempts, clear metrics, and reviewable evidence for humans, database loading, and LLM analysis.
+
+**Completed:**
+- Split the original HTTP scraper into focused modules: `session`, `jsf`, `parser`, `pdf`, `checkpoint`, `output`, `scraper`, `utils`.
+- Added `npm run scrape:oefa:test100`.
+- Wrote test outputs to `output/test100/oefa-documents.jsonl` and `output/test100/pdfs/`.
+- Fixed JSONL write order so `pdfLocalPath` is updated before each document is written.
+- Fixed OEFA PrimeFaces pagination using the DataTable source, `*_skipChildren`, `*_encodeFeature`, row-fragment parsing, and partial ViewState updates.
+- Stopped discarding small valid PDFs by byte size.
+- Added explicit PDF statuses: `downloaded`, `skippedExisting`, `confidential`, `missingPdfUrl`, `missingJsfAction`, `failedDownload`.
+- Added review artifacts: `run-summary.json`, `page-events.jsonl`, `run-report.md`, and `failed-pdfs.json`.
+- Added `npm run probe:oefa:429` for a separate controlled 429 probe.
+
+**Verified result for `test100`:**
+- 100 JSONL records.
+- 100 unique IDs.
+- 92 records with `pdfLocalPath`.
+- 92 downloadable PDFs saved locally.
+- 8 records without PDFs because OEFA marks them as confidential.
+- 8 `failed-pdfs.json` entries with `status: "confidential"`.
+- 0 `failedDownload`.
+- 0 HTTP 429 during the test100 run.
+
+**Manual review conclusion:** Manual inspection reached the same result as the scraper reports: the first 100 records do not have 100 downloadable PDFs. The scraper downloads all available PDFs; the remaining records are confidential OEFA rows and cannot be downloaded.
+
+**Related commits:**
+- `069a3e8` - `refactor: split HTTP scraper into focused modules`
+- `1bab1dd` - `feat: add 100 record PDF download test mode`
+- `b4feb63` - `feat: add review-friendly scrape reports`
+
+**Sprint 3 target:**
+- Extract a complete OEFA sector.
+- Improve terminal visualization so the process is easy to follow live.
+- Make the run narrative human-readable and LLM-readable: phases, sectors, pages, documents, PDF outcomes, confidential rows, retries, 429 events, timing, and artifact paths.
+- Keep structured artifacts suitable for database ingestion and downstream LLM review.
