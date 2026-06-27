@@ -1,19 +1,8 @@
-const W = 62; // inner box width (chars between │ characters)
-const BAR = 20; // progress bar character width
-
+const W = 66;
+const BAR = 26;
 const isTTY = Boolean(process.stdout.isTTY);
 
-// ── Box primitives ───────────────────────────────────────────────
-
-const boxTop = (): void => { process.stdout.write(`\n┌${'─'.repeat(W)}┐\n`); };
-const boxDiv = (): void => { process.stdout.write(`├${'─'.repeat(W)}┤\n`); };
-const boxBot = (): void => { process.stdout.write(`└${'─'.repeat(W)}┘\n`); };
-const boxLine = (s: string): void => {
-  const content = s.length > W - 2 ? s.slice(0, W - 5) + '...' : s;
-  process.stdout.write(`│  ${content.padEnd(W - 2)}│\n`);
-};
-
-// ── Public API ───────────────────────────────────────────────────
+const hr = (c = '-'): void => { process.stdout.write(c.repeat(W) + '\n'); };
 
 export const runBanner = (
   siteName: string,
@@ -21,13 +10,15 @@ export const runBanner = (
   outputPath: string,
   limit: number | null,
 ): void => {
-  boxTop();
-  boxLine(siteName);
-  if (sectorLabel) boxLine(`Sector filter: ${sectorLabel}`);
-  boxLine(`Output: ${outputPath}`);
-  if (limit !== null) boxLine(`Limit: ${limit.toLocaleString()} records`);
-  boxLine(new Date().toLocaleString());
-  boxBot();
+  process.stdout.write('\n');
+  hr('=');
+  process.stdout.write(`  🐱 ${siteName}\n`);
+  if (sectorLabel) process.stdout.write(`  Sector: ${sectorLabel}\n`);
+  process.stdout.write(`  Salida : ${outputPath}\n`);
+  if (limit !== null) process.stdout.write(`  Limite : ${limit.toLocaleString()} registros\n`);
+  process.stdout.write(`  Inicio : ${new Date().toLocaleString()}\n`);
+  hr('=');
+  process.stdout.write('\n');
 };
 
 export const sectorBanner = (
@@ -38,26 +29,29 @@ export const sectorBanner = (
   totalRecords: number | null,
 ): void => {
   const label = sectorName ?? sectorId ?? 'all';
-  boxTop();
-  boxLine(`Sector ${idx}/${total}  ·  ${label}`);
-  if (totalRecords !== null) boxLine(`${totalRecords.toLocaleString()} records expected`);
-  boxBot();
+  process.stdout.write('\n');
+  hr('=');
+  process.stdout.write(`  😸 SECTOR ${idx} de ${total} -- ${label}`);
+  if (totalRecords !== null) process.stdout.write(`  (${totalRecords.toLocaleString()} registros)`);
+  process.stdout.write('\n');
+  hr('=');
+  process.stdout.write('\n');
 };
 
 export const phaseStep = (msg: string): void => {
   if (isTTY) {
-    process.stdout.write(`  ▷ ${msg} ...`);
+    process.stdout.write(`  🐾 ${msg}...`);
   } else {
-    process.stdout.write(`  ▷ ${msg} ...\n`);
+    process.stdout.write(`  🐾 ${msg}...\n`);
   }
 };
 
 export const phaseOk = (msg: string, detail?: string): void => {
   const suffix = detail ? `  (${detail})` : '';
   if (isTTY) {
-    process.stdout.write(`\r  ✓ ${msg}${suffix}\n`);
+    process.stdout.write(`\r  😻 ${msg}${suffix}\n`);
   } else {
-    process.stdout.write(`  ✓ ${msg}${suffix}\n`);
+    process.stdout.write(`  😻 ${msg}${suffix}\n`);
   }
 };
 
@@ -65,12 +59,13 @@ export const liveProgress = (label: string, done: number, total: number): void =
   if (!isTTY) return;
   const ratio = total > 0 ? Math.min(done / total, 1) : 0;
   const filled = Math.round(ratio * BAR);
-  const barStr = '█'.repeat(filled) + '░'.repeat(BAR - filled);
-  process.stdout.write(`\r  ${label} [${barStr}] ${done}/${total}`.padEnd(80));
+  const barStr = '#'.repeat(filled) + '.'.repeat(BAR - filled);
+  const pct = Math.round(ratio * 100);
+  process.stdout.write(`\r  ${label} [${barStr}] ${done}/${total} (${pct}%)`.padEnd(82));
 };
 
 export const clearProgress = (): void => {
-  if (isTTY) process.stdout.write('\r' + ' '.repeat(80) + '\r');
+  if (isTTY) process.stdout.write('\r' + ' '.repeat(82) + '\r');
 };
 
 export const pageLine = (
@@ -79,21 +74,37 @@ export const pageLine = (
   docsThisPage: number,
   totalDocs: number,
   targetDocs: number | null,
+  totalRecords: number | null,
   pdfOk: number,
   pdfConf: number,
   pdfFail: number,
   elapsed: string,
+  docsPerMin: number | null,
 ): void => {
-  const totalPagesStr = totalPages != null ? String(totalPages) : '---';
-  const pageNumStr = String(pageNum).padStart(totalPagesStr.length);
-  const pgLabel = `${pageNumStr}/${totalPagesStr}`;
-  const docLabel = targetDocs != null ? `${totalDocs}/${targetDocs}` : String(totalDocs);
-  const pdfParts: string[] = [`${pdfOk}✓`];
-  if (pdfConf > 0) pdfParts.push(`${pdfConf} conf`);
-  if (pdfFail > 0) pdfParts.push(`${pdfFail} fail`);
-  process.stdout.write(
-    `  [${pgLabel}]  +${docsThisPage}  total ${docLabel} docs  ·  pdf ${pdfParts.join(' ')}  ·  ${elapsed}\n`,
-  );
+  const totalPagesStr = totalPages != null ? String(totalPages) : '?';
+  const pct = totalRecords != null && totalRecords > 0
+    ? ` (${((totalDocs / totalRecords) * 100).toFixed(1)}%)`
+    : '';
+  const remaining = totalRecords != null ? totalRecords - totalDocs : null;
+  const eta = docsPerMin != null && remaining != null && docsPerMin > 0
+    ? `~${Math.ceil(remaining / docsPerMin)} min`
+    : 'calculando';
+  const pdfParts = [
+    `${pdfOk} descargados`,
+    pdfConf > 0 ? `${pdfConf} confidenciales` : null,
+    pdfFail > 0 ? `${pdfFail} fallidos` : null,
+  ].filter(Boolean).join(' | ');
+
+  process.stdout.write('\n');
+  hr();
+  process.stdout.write(`  Pagina ${pageNum} de ${totalPagesStr}   |   Tiempo: ${elapsed}\n`);
+  hr();
+  process.stdout.write(`  + Documentos esta pagina  : ${docsThisPage}\n`);
+  process.stdout.write(`    Total acumulado         : ${totalDocs}${targetDocs != null ? ` / ${targetDocs}` : ''}${pct}\n`);
+  process.stdout.write(`    PDFs                    : ${pdfParts}\n`);
+  process.stdout.write(`    Velocidad               : ${docsPerMin != null ? `${docsPerMin} docs/min` : 'calculando'}\n`);
+  process.stdout.write(`    ETA                     : ${eta} restantes\n`);
+  hr();
 };
 
 export const runSummary = (
@@ -101,18 +112,19 @@ export const runSummary = (
   footer?: string,
 ): void => {
   process.stdout.write('\n');
-  boxTop();
-  boxLine('RUN COMPLETE');
-  boxDiv();
+  hr('=');
+  process.stdout.write('  EXTRACCION COMPLETA\n');
+  hr('=');
   for (const [k, v] of rows) {
-    const keyPad = k.padEnd(32);
+    const label = `  ${k}`;
     const val = String(v);
-    boxLine(`${keyPad}${val}`);
+    const dots = Math.max(1, W - label.length - val.length - 2);
+    process.stdout.write(label + '.'.repeat(dots) + val + '\n');
   }
   if (footer) {
-    boxDiv();
-    boxLine(footer);
+    hr('-');
+    process.stdout.write(`  ${footer}\n`);
   }
-  boxBot();
+  hr('=');
   process.stdout.write('\n');
 };

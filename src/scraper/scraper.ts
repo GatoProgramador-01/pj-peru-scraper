@@ -75,7 +75,16 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     logger.info(`-- Sector ${i + 1}/${sectorsToRun.length}: ${sectorName ?? sectorId} --`, { sectorId, sectorName });
     display.sectorBanner(i + 1, sectorsToRun.length, sectorId, sectorName, null);
     const session = makeSession(config.baseUrl, opts.proxy);
-    const count = await scrapeSector(session, config, sectorOpts, sectorId, sectorName, out, metrics, failedPdfs, pageEvents, opts.limit);
+    let count = await scrapeSector(session, config, sectorOpts, sectorId, sectorName, out, metrics, failedPdfs, pageEvents, opts.limit);
+
+    // Transient server glitch (JSF search POST returns 0 rows) — retry once with fresh session.
+    if (count === 0 && !opts.dryRun) {
+      logger.warn('Zero docs on first attempt — waiting 5s and retrying with fresh session', { sectorId, sectorName });
+      await sleep(5_000);
+      const retrySession = makeSession(config.baseUrl, opts.proxy);
+      count = await scrapeSector(retrySession, config, sectorOpts, sectorId, sectorName, out, metrics, failedPdfs, pageEvents, opts.limit);
+    }
+
     totalScraped += count;
 
     const runSec = Math.round((Date.now() - runStart) / 1000);

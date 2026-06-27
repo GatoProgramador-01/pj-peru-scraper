@@ -5,24 +5,28 @@ import type { SiteConfig } from './types.js';
 
 export const SITES: Record<string, SiteConfig> = {
   'pj-peru': {
-    // Column order TBD — requires VPN to Peru; run recon first.
-    // Likely: [0]=Expediente [1]=Sala [2]=Fecha [3]=Sumilla [4]=PDF
-    columns: { caseNumber: 0, court: 1, date: 2, summary: 3 },
+    // Verified 2026-06-27 via live recon with Peru VPN (CyberGhost).
+    // RichFaces 4.2.2 + Mojarra (NOT PrimeFaces). Results as div repeat panels.
+    // cells = [0]=tipoRecurso [1]=expediente [2]=pretension [3]=tipoResolucion [4]=fechaResolucion [5]=sala [6]=sumilla
+    columns: { caseNumber: 1, court: 5, date: 4, summary: 2, resolution: 3 },
     name: 'Poder Judicial del Perú — Jurisprudencia',
     baseUrl: 'https://jurisprudencia.pj.gob.pe',
-    startUrl: 'https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/resultado.xhtml',
+    startUrl: 'https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml',
+    resultsUrl: 'https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/resultado.xhtml',
+    rowParser: 'richfacesRepeat',
     selectors: {
-      rows: 'table.ui-datatable-data tbody tr, .ui-datatable-tablewrapper tbody tr',
+      // rowParser='richfacesRepeat' bypasses this; kept as fallback sentinel
+      rows: '[id^="formBuscador:repeat:"][id$=":j_idt455"]',
       cells: 'td',
-      caseNumber: 'td:nth-child(1)',
-      court: 'td:nth-child(2)',
-      date: 'td:nth-child(3)',
-      summary: 'td:nth-child(4)',
-      pdfLink: 'a[href$=".pdf"], a[title*="PDF"], a[title*="Ver"], button[title*="PDF"]',
-      nextButton: 'a.ui-paginator-next:not(.ui-state-disabled), .ui-paginator-next:not([aria-disabled="true"])',
-      currentPage: '.ui-paginator-current, span.ui-paginator-page.ui-state-active',
+      caseNumber: 'td:nth-child(2)',
+      court: 'td:nth-child(6)',
+      date: 'td:nth-child(5)',
+      summary: 'td:nth-child(3)',
+      pdfLink: 'a[href*="ServletDescarga"]',
+      nextButton: 'a.rf-ds-btn-next',
+      currentPage: '.rf-ds-act',
       totalPages: null,
-      noResults: '.ui-datatable-empty-message, .no-results',
+      noResults: '[id*="optResultado"]',
     },
     timing: {
       pageDelayMs: [2500, 5500],
@@ -30,6 +34,27 @@ export const SITES: Record<string, SiteConfig> = {
       retryWaitMs: [8000, 16000, 35000],
       navigationTimeoutMs: 45_000,
       selectorTimeoutMs: 20_000,
+    },
+    search: {
+      formId: 'formBuscador',
+      buttonId: 'formBuscador:j_idt31',
+      buttonValue: '',
+      ajax: false,
+      fields: {
+        'formBuscador:buCorte': '1',
+        'formBuscador:buDistrito': '0',
+        'formBuscador:buEspecialidad': '0',
+        'formBuscador:buSala': '0',
+        'formBuscador:buAnio': '',
+        'formBuscador:txtBusqueda': '',
+        'formBuscador:tabpanel-value': 'general',
+        'forward': 'buscar',
+        'busqueda': 'especializada',
+        'formBuscador:j_idt34': '21',
+        'formBuscador:j_idt35': 'DESC',
+        'formBuscador:j_idt36': 'Principal',
+        'formBuscador:j_idt37': '1',
+      },
     },
   },
 
@@ -55,8 +80,8 @@ export const SITES: Record<string, SiteConfig> = {
       noResults: '.ui-datatable-empty-message',
     },
     timing: {
-      pageDelayMs: [200, 600],
-      pdfDelayMs: [0, 100],
+      pageDelayMs: [0, 0],
+      pdfDelayMs: [0, 0],
       retryWaitMs: [5000, 12000, 25000],
       navigationTimeoutMs: 40_000,
       selectorTimeoutMs: 20_000,
