@@ -10,6 +10,7 @@ import { makeSession } from '../session/session.js';
 import { sleep } from '../utils/delay.js';
 import { discoverSectors } from './sectorDiscovery.js';
 import { scrapeSector } from './sectorScraper.js';
+import type { JudicialDocument } from '../types.js';
 import * as display from '../display/terminal.js';
 
 const formatDuration = (ms: number): string => {
@@ -55,10 +56,10 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     : null;
   display.runBanner(config.name, sectorLabel, opts.outputPath, opts.limit);
 
-  const out = opts.dryRun ? null : fs.createWriteStream(opts.outputPath, { flags: 'a' });
   const failedPdfs: PdfFailure[] = [];
   const pageEvents: PageEvent[] = [];
   const metrics = createRunMetrics();
+  const allDocs: JudicialDocument[] = [];
   let totalScraped = 0;
   const runStart = Date.now();
 
@@ -75,22 +76,23 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     logger.info(`-- Sector ${i + 1}/${sectorsToRun.length}: ${sectorName ?? sectorId} --`, { sectorId, sectorName });
     display.sectorBanner(i + 1, sectorsToRun.length, sectorId, sectorName, null);
     const session = makeSession(config.baseUrl, opts.proxy);
-    let count = await scrapeSector(session, config, sectorOpts, sectorId, sectorName, out, metrics, failedPdfs, pageEvents, opts.limit);
+    let result = await scrapeSector(session, config, sectorOpts, sectorId, sectorName, metrics, failedPdfs, pageEvents, opts.limit);
 
     // Transient server glitch (JSF search POST returns 0 rows) — retry once with fresh session.
-    if (count === 0 && !opts.dryRun) {
+    if (result.count === 0 && !opts.dryRun) {
       logger.warn('Zero docs on first attempt — waiting 5s and retrying with fresh session', { sectorId, sectorName });
       await sleep(5_000);
       const retrySession = makeSession(config.baseUrl, opts.proxy);
-      count = await scrapeSector(retrySession, config, sectorOpts, sectorId, sectorName, out, metrics, failedPdfs, pageEvents, opts.limit);
+      result = await scrapeSector(retrySession, config, sectorOpts, sectorId, sectorName, metrics, failedPdfs, pageEvents, opts.limit);
     }
 
-    totalScraped += count;
+    allDocs.push(...result.docs);
+    totalScraped += result.count;
 
     const runSec = Math.round((Date.now() - runStart) / 1000);
     logger.info(`Sector ${i + 1}/${sectorsToRun.length} done`, {
       sector: `${sectorId}=${sectorName}`,
-      sectorDocs: count,
+      sectorDocs: result.count,
       totalSoFar: totalScraped,
       runElapsed: runSec < 60 ? `${runSec}s` : `${Math.floor(runSec / 60)}m${runSec % 60}s`,
     });
@@ -108,7 +110,9 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     }
   }
 
-  out?.end();
+  if (!opts.dryRun && allDocs.length > 0) {
+    fs.writeFileSync(opts.outputPath, allDocs.map(d => JSON.stringify(d)).join('\n') + '\n');
+  }
   if (failedPdfs.length > 0 && !opts.dryRun) {
     writeFailedPdfReport(opts.failedPdfPath ?? path.join(path.dirname(opts.outputPath), 'failed-pdfs.json'), failedPdfs);
   }

@@ -6,6 +6,11 @@ import type { ParsedRow, Session } from '../models/internalTypes.js';
 import type { PageEvent, PdfDownloadResult, PdfFailure, RunMetrics } from '../models/metrics.js';
 import { pdfFailureFromDocument } from '../models/metrics.js';
 import type { JudicialDocument, ScrapeOptions, SiteConfig } from '../types.js';
+
+export interface SectorResult {
+  count: number;
+  docs: JudicialDocument[];
+}
 import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js';
 import { fetchNextPage } from '../jsf/pagination.js';
 import { submitSearch } from '../jsf/searchForm.js';
@@ -160,12 +165,11 @@ export const scrapeSector = async (
   opts: ScrapeOptions,
   sectorId: string | null,
   sectorName: string | null,
-  out: fs.WriteStream | null,
   metrics: RunMetrics,
   failedPdfs: PdfFailure[],
   pageEvents: PageEvent[],
   runLimit: number | null,
-): Promise<number> => {
+): Promise<SectorResult> => {
   const { site, pdfDir, limit, dryRun } = opts;
   const envPdfConcurrency = Number(process.env.PDF_CONCURRENCY ?? 1) || 1;
   const pdfConcurrency = Math.max(1, opts.pdfConcurrency ?? envPdfConcurrency);
@@ -178,8 +182,9 @@ export const scrapeSector = async (
     ? loadCheckpoint(site, sectorId, districtId)
     : { startPage: 0, completed: false };
 
-  if (completed) return 0;
+  if (completed) return { count: 0, docs: [] };
 
+  const collected: JudicialDocument[] = [];
   let totalScraped = 0;
   let pageIndex = startPage;
   const sectorStart = Date.now();
@@ -232,7 +237,7 @@ export const scrapeSector = async (
 
     if (page.rows.length === 0) {
       logger.warn('Zero results for sector - skipping', { sectorId, sectorName });
-      return 0;
+      return { count: 0, docs: [] };
     }
   }
 
@@ -339,7 +344,7 @@ export const scrapeSector = async (
     if (dryRun) {
       logger.info('[dry-run]', { sectorId, pageIndex, count: toWrite.length, sample: toWrite[0]?.caseNumber });
     } else {
-      for (const doc of toWrite) out!.write(JSON.stringify(doc) + '\n');
+      collected.push(...toWrite);
     }
 
     totalScraped += toWrite.length;
@@ -435,5 +440,5 @@ export const scrapeSector = async (
 
   if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true, districtId);
   logger.info('Sector done', { sector: `${sectorId}=${sectorName}`, totalScraped, elapsed: elapsed() });
-  return totalScraped;
+  return { count: totalScraped, docs: collected };
 };
