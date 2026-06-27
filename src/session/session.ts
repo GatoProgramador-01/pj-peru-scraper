@@ -1,3 +1,5 @@
+import https from 'https';
+import http from 'http';
 import axios, { type AxiosResponse } from 'axios';
 import { load as cheerioLoad } from 'cheerio';
 import { logger } from '../logger.js';
@@ -15,6 +17,15 @@ const parseProxy = (url: string) => {
   };
 };
 
+// Node.js default HTTPS agent allows only 5 sockets per host.
+// With 20+ parallel district workers all hitting the same host,
+// that queues 15+ workers behind 5 open connections. Use per-session
+// agents with keepAlive and high socket ceiling instead.
+const makeAgents = () => ({
+  httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 64 }),
+  httpAgent: new http.Agent({ keepAlive: true, maxSockets: 64 }),
+});
+
 export const makeSession = (baseUrl: string, proxy?: string | null): Session => ({
   client: axios.create({
     baseURL: baseUrl,
@@ -27,6 +38,7 @@ export const makeSession = (baseUrl: string, proxy?: string | null): Session => 
       'Accept-Encoding': 'gzip, deflate, br',
       'Connection': 'keep-alive',
     },
+    ...makeAgents(),
     ...(proxy ? { proxy: parseProxy(proxy) } : {}),
   }),
   cookies: new Map(),

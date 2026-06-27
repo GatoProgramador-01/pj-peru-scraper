@@ -11,7 +11,7 @@ export interface SectorResult {
   count: number;
   docs: JudicialDocument[];
 }
-import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js';
+import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js'; // loadCheckpoint used for completed-flag only
 import { fetchNextPage } from '../jsf/pagination.js';
 import { submitSearch } from '../jsf/searchForm.js';
 import { parsePage } from '../parser/pageParser.js';
@@ -178,15 +178,19 @@ export const scrapeSector = async (
 
   const districtId = opts.districtId ?? null;
 
-  const { startPage, completed } = opts.resume
+  // With memory-first output, mid-district checkpoints can't restore the
+  // in-memory doc buffer, so resuming from a partial startPage would silently
+  // drop the already-scraped pages. Only the completed=true flag is meaningful:
+  // it lets parallel-districts skip a finished district on --resume.
+  const { completed } = opts.resume
     ? loadCheckpoint(site, sectorId, districtId)
-    : { startPage: 0, completed: false };
+    : { completed: false };
 
   if (completed) return { count: 0, docs: [] };
 
   const collected: JudicialDocument[] = [];
   let totalScraped = 0;
-  let pageIndex = startPage;
+  let pageIndex = 0;
   const sectorStart = Date.now();
 
   const elapsed = (): string => {
@@ -241,33 +245,6 @@ export const scrapeSector = async (
     }
   }
 
-  // Fast-forward to resume page by replaying page-turn POSTs
-  if (pageIndex > 0) {
-    display.phaseStep(`Resuming from page ${pageIndex + 1}`);
-  }
-  for (let i = 0; i < pageIndex; i++) {
-    const { $: next$, newViewState } = await withRetry(
-      () => fetchNextPage(session, config.startUrl, page, i + 1, ROWS_PER_PAGE, useRichFaces),
-      config.timing.retryWaitMs,
-      `resume-nav-${i + 1}`,
-      metrics,
-    );
-    const pag = parsePaginatorText(next$);
-    const resumeRows = parseRows(next$, config, config.baseUrl);
-    page = {
-      ...page,
-      viewState: newViewState ?? page.viewState,
-      rows: resumeRows,
-      hasNextPage: pag ? pageHasNext(next$) : page.totalPages != null ? i + 2 < page.totalPages : pageHasNext(next$) || resumeRows.length >= ROWS_PER_PAGE,
-      currentPage: pag?.currentPage ?? i + 2,
-      totalPages: pag?.totalPages ?? page.totalPages,
-      totalRecords: pag?.totalRecords ?? page.totalRecords,
-    };
-  }
-  if (pageIndex > 0) {
-    display.phaseOk(`Resumed at page ${pageIndex + 1}`, elapsed());
-  }
-
   const CONSECUTIVE_EMPTY_ABORT = 3;
   let consecutiveEmptyPages = 0;
 
@@ -296,7 +273,6 @@ export const scrapeSector = async (
         elapsed: elapsed(), createdAt: new Date().toISOString(),
       });
       if (consecutiveEmptyPages >= CONSECUTIVE_EMPTY_ABORT) {
-        if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, false, districtId);
         break;
       }
       // Fall through — fetch next page and try again
@@ -349,7 +325,6 @@ export const scrapeSector = async (
 
     totalScraped += toWrite.length;
     metrics.totalDocumentsCollected += toWrite.length;
-    if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, false, districtId);
 
     const elapsedSec = (Date.now() - sectorStart) / 1000;
     const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
