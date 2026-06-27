@@ -89,6 +89,9 @@ npm run scrape:oefa:mineria:resume
 
 # Prueba separada para observar HTTP 429
 npm run probe:oefa:429
+
+# Simulacion local reproducible de HTTP 429 + backoff
+npm run simulate:429
 ```
 
 El script `scrape:oefa:test100` ejecuta:
@@ -305,6 +308,19 @@ El wrapper de reintentos registra:
 | HTTP 429 | Respeta `Retry-After` cuando existe |
 | HTML con texto de bloqueo | Se considera rate-limit-like |
 | Fallas de red/transitorias | Reintentos con esperas configuradas |
+
+La simulacion local valida el comportamiento sin depender de que OEFA emita 429 durante una corrida real:
+
+```bash
+npm run simulate:429
+```
+
+Esa prueba fuerza dos escenarios:
+
+| Escenario | Resultado esperado |
+| --- | --- |
+| 429 recuperable | Falla dos veces, respeta backoff, retorna OK al tercer intento |
+| 429 persistente | Agota 3 intentos, registra 3 retries y 3 eventos 429 |
 
 El probe separado evita mezclar pruebas agresivas de 429 con corridas de extraccion:
 
