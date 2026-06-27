@@ -461,3 +461,13 @@ $env:PROBE_429_TOTAL='1500'; $env:PROBE_429_CONCURRENCY='40'; npm run probe:oefa
 The probe exits with code `2` if no 429 was observed inside the configured request budget. If a 429 appears, the report captures `total429`, `first429AtRequest`, status counts, and any `Retry-After` values.
 
 Small PDFs are not discarded. Direct PDF responses are saved as returned, and JSF action responses are saved when they start with `%PDF`, regardless of byte size. Non-PDF JSF responses are still recorded as `failedDownload`.
+
+### Review-friendly run artifacts
+
+Each non-dry run now writes review artifacts next to the JSONL output:
+
+- `run-summary.json`: machine-friendly metrics, artifact paths, and interpretation notes.
+- `page-events.jsonl`: one structured event per scraped page for timeline review or database loading.
+- `run-report.md`: compact human-readable report for reviewers.
+
+Confidential OEFA rows are reported as `status: "confidential"` in `failed-pdfs.json`. These are expected unavailable PDFs, not scraper failures.

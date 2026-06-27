@@ -2,9 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../logger.js';
 import { SITES } from '../config.js';
-import { createRunMetrics, type PdfFailure } from '../models/metrics.js';
+import { createRunMetrics, type PageEvent, type PdfFailure } from '../models/metrics.js';
 import type { ScrapeOptions } from '../types.js';
 import { validateOutput } from '../output/validator.js';
+import { writeRunReports } from '../output/runReport.js';
 import { makeSession } from '../session/session.js';
 import { sleep } from '../utils/delay.js';
 import { discoverSectors } from './sectorDiscovery.js';
@@ -50,6 +51,7 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
 
   const out = opts.dryRun ? null : fs.createWriteStream(opts.outputPath, { flags: 'a' });
   const failedPdfs: PdfFailure[] = [];
+  const pageEvents: PageEvent[] = [];
   const metrics = createRunMetrics();
   let totalScraped = 0;
   const runStart = Date.now();
@@ -66,7 +68,7 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
 
     logger.info(`-- Sector ${i + 1}/${sectorsToRun.length}: ${sectorName ?? sectorId} --`, { sectorId, sectorName });
     const session = makeSession(config.baseUrl, opts.proxy);
-    const count = await scrapeSector(session, config, sectorOpts, sectorId, sectorName, out, metrics, failedPdfs, opts.limit);
+    const count = await scrapeSector(session, config, sectorOpts, sectorId, sectorName, out, metrics, failedPdfs, pageEvents, opts.limit);
     totalScraped += count;
 
     const runSec = Math.round((Date.now() - runStart) / 1000);
@@ -110,6 +112,7 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     totalPdfDownloaded: metrics.totalPdfDownloaded,
     totalPdfFailed: metrics.totalPdfFailed,
     totalPdfMissing: metrics.totalPdfMissing,
+    totalPdfConfidential: metrics.totalPdfConfidential,
     totalSkippedExisting: metrics.totalSkippedExisting,
     total429: metrics.total429,
     totalRetries: metrics.totalRetries,
@@ -119,6 +122,24 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     avgPdfLatencyMs,
     failedPdfReport: failedPdfs.length > 0 ? (opts.failedPdfPath ?? path.join(path.dirname(opts.outputPath), 'failed-pdfs.json')) : null,
   });
+
+  const reportPaths = !opts.dryRun
+    ? writeRunReports({
+      opts,
+      metrics,
+      failedPdfs,
+      pageEvents,
+      elapsedMs,
+      docsPerMinute: Math.round(metrics.totalDocumentsCollected / elapsedMin),
+      pdfsPerMinute: Math.round(totalPdfCompleted / elapsedMin),
+      avgPdfLatencyMs,
+      totalScraped,
+    })
+    : null;
+
+  if (reportPaths) {
+    logger.info('Run artifacts written', reportPaths);
+  }
 
   logger.info('Run complete', {
     site: opts.site,

@@ -2,7 +2,7 @@ import fs from 'fs';
 import { logger } from '../logger.js';
 import { ROWS_PER_PAGE } from '../config/constants.js';
 import type { ParsedRow, Session } from '../models/internalTypes.js';
-import type { PdfDownloadResult, PdfFailure, RunMetrics } from '../models/metrics.js';
+import type { PageEvent, PdfDownloadResult, PdfFailure, RunMetrics } from '../models/metrics.js';
 import { pdfFailureFromDocument } from '../models/metrics.js';
 import type { JudicialDocument, ScrapeOptions, SiteConfig } from '../types.js';
 import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js';
@@ -21,8 +21,12 @@ interface PagePdfStats {
   pdfDownloadedThisPage: number;
   pdfFailedThisPage: number;
   pdfMissingThisPage: number;
+  pdfConfidentialThisPage: number;
   pdfSkippedExistingThisPage: number;
 }
+
+const isConfidentialDocument = (doc: JudicialDocument): boolean =>
+  doc.rawCells.some(cell => /confidencial/i.test(cell));
 
 const recordPdfResult = (
   doc: JudicialDocument,
@@ -50,7 +54,8 @@ const recordPdfResult = (
   }
 
   metrics.totalPdfMissing++;
-  failedPdfs.push(pdfFailureFromDocument(doc, result.status, result.status));
+  if (result.status === 'confidential') metrics.totalPdfConfidential++;
+  failedPdfs.push(pdfFailureFromDocument(doc, result.status, result.error ?? result.status));
 };
 
 const processPdfResult = (
@@ -64,6 +69,10 @@ const processPdfResult = (
   if (result.status === 'downloaded') pageStats.pdfDownloadedThisPage++;
   if (result.status === 'failedDownload') pageStats.pdfFailedThisPage++;
   if (result.status === 'missingPdfUrl' || result.status === 'missingJsfAction') pageStats.pdfMissingThisPage++;
+  if (result.status === 'confidential') {
+    pageStats.pdfMissingThisPage++;
+    pageStats.pdfConfidentialThisPage++;
+  }
   if (result.status === 'skippedExisting') pageStats.pdfSkippedExistingThisPage++;
 };
 
@@ -82,6 +91,7 @@ const downloadPagePdfs = async (
     pdfDownloadedThisPage: 0,
     pdfFailedThisPage: 0,
     pdfMissingThisPage: 0,
+    pdfConfidentialThisPage: 0,
     pdfSkippedExistingThisPage: 0,
   };
 
@@ -98,9 +108,15 @@ const downloadPagePdfs = async (
       metrics.totalPdfCandidates++;
       jsfIndexes.push(i);
     } else {
+      const status = isConfidentialDocument(doc) ? 'confidential' : 'missingJsfAction';
       processPdfResult(
         doc,
-        { status: 'missingJsfAction', localPath: null, latencyMs: 0, error: 'No direct PDF URL or JSF action found' },
+        {
+          status,
+          localPath: null,
+          latencyMs: 0,
+          error: status === 'confidential' ? 'OEFA marks this row as confidential' : 'No direct PDF URL or JSF action found',
+        },
         metrics,
         failedPdfs,
         pageStats,
@@ -140,6 +156,7 @@ export const scrapeSector = async (
   out: fs.WriteStream | null,
   metrics: RunMetrics,
   failedPdfs: PdfFailure[],
+  pageEvents: PageEvent[],
   runLimit: number | null,
 ): Promise<number> => {
   const { site, pdfDir, limit, dryRun } = opts;
@@ -222,7 +239,7 @@ export const scrapeSector = async (
     const pagePdfStartedAt = Date.now();
     const pagePdfStats = pdfDir && !dryRun
       ? await downloadPagePdfs(session, config, toWrite, page.rows, page.viewState, pdfDir, pdfConcurrency, metrics, failedPdfs)
-      : { pdfDownloadedThisPage: 0, pdfFailedThisPage: 0, pdfMissingThisPage: 0, pdfSkippedExistingThisPage: 0 };
+      : { pdfDownloadedThisPage: 0, pdfFailedThisPage: 0, pdfMissingThisPage: 0, pdfConfidentialThisPage: 0, pdfSkippedExistingThisPage: 0 };
 
     if (dryRun) {
       logger.info('[dry-run]', { sectorId, pageIndex, count: toWrite.length, sample: toWrite[0]?.caseNumber });
@@ -251,10 +268,31 @@ export const scrapeSector = async (
       pdfDownloadedThisPage: pagePdfStats.pdfDownloadedThisPage,
       pdfFailedThisPage: pagePdfStats.pdfFailedThisPage,
       pdfMissingThisPage: pagePdfStats.pdfMissingThisPage,
+      pdfConfidentialThisPage: pagePdfStats.pdfConfidentialThisPage,
       pdfSkippedExistingThisPage: pagePdfStats.pdfSkippedExistingThisPage,
       pdfRate: `${pdfRate} pdfs/min`,
       rate: docsPerMin != null ? `${docsPerMin} docs/min` : '-',
       elapsed: elapsed(),
+    });
+
+    pageEvents.push({
+      type: 'pageScraped',
+      site,
+      sectorId,
+      sectorName,
+      pageIndex,
+      pageLabel: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : '/?'}`,
+      docsThisPage: toWrite.length,
+      totalDocs: metrics.totalDocumentsCollected,
+      targetDocs: runLimit,
+      totalRecords: page.totalRecords,
+      pdfDownloadedThisPage: pagePdfStats.pdfDownloadedThisPage,
+      pdfFailedThisPage: pagePdfStats.pdfFailedThisPage,
+      pdfMissingThisPage: pagePdfStats.pdfMissingThisPage,
+      pdfConfidentialThisPage: pagePdfStats.pdfConfidentialThisPage,
+      pdfSkippedExistingThisPage: pagePdfStats.pdfSkippedExistingThisPage,
+      elapsed: elapsed(),
+      createdAt: new Date().toISOString(),
     });
 
     if (!page.hasNextPage) {

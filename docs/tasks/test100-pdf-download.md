@@ -107,3 +107,13 @@ The probe writes status counts, total 429s, first 429 request number, and `Retry
 ## Small PDFs
 
 Small PDFs are valid evidence and should not be discarded by size. The downloader saves direct PDF responses as returned. For JSF action POSTs, the only content guard is the PDF magic header (`%PDF`); this avoids saving XML/HTML error responses as PDF while allowing tiny PDFs.
+
+## Review Artifacts
+
+Every non-dry run writes these files beside the JSONL output:
+
+- `run-summary.json`: overall metrics and interpretation.
+- `page-events.jsonl`: page-by-page progress events.
+- `run-report.md`: human-readable report.
+
+For OEFA, confidential rows are represented as `status: "confidential"` in `failed-pdfs.json`. They are expected unavailable PDFs and should not be counted as downloader failures.

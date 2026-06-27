@@ -5,6 +5,7 @@ export type PdfStatus =
   | 'failedDownload'
   | 'missingPdfUrl'
   | 'missingJsfAction'
+  | 'confidential'
   | 'skippedExisting';
 
 export interface PdfFailure {
@@ -34,11 +35,32 @@ export interface RunMetrics {
   totalPdfDownloaded: number;
   totalPdfFailed: number;
   totalPdfMissing: number;
+  totalPdfConfidential: number;
   totalSkippedExisting: number;
   total429: number;
   totalRetries: number;
   pdfLatencySamples: number[];
   startedAt: number;
+}
+
+export interface PageEvent {
+  type: 'pageScraped';
+  site: string;
+  sectorId: string | null;
+  sectorName: string | null;
+  pageIndex: number;
+  pageLabel: string;
+  docsThisPage: number;
+  totalDocs: number;
+  targetDocs: number | null;
+  totalRecords: number | null;
+  pdfDownloadedThisPage: number;
+  pdfFailedThisPage: number;
+  pdfMissingThisPage: number;
+  pdfConfidentialThisPage: number;
+  pdfSkippedExistingThisPage: number;
+  elapsed: string;
+  createdAt: string;
 }
 
 export const createRunMetrics = (): RunMetrics => ({
@@ -47,6 +69,7 @@ export const createRunMetrics = (): RunMetrics => ({
   totalPdfDownloaded: 0,
   totalPdfFailed: 0,
   totalPdfMissing: 0,
+  totalPdfConfidential: 0,
   totalSkippedExisting: 0,
   total429: 0,
   totalRetries: 0,
