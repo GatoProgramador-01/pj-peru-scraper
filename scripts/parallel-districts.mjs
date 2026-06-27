@@ -67,17 +67,20 @@ const get    = f => { const i = args.indexOf(f); return i !== -1 ? args[i + 1] :
 const has    = f => args.includes(f);
 
 const pdfs        = has('--pdfs');
-const pdfDir      = get('--pdf-dir')         ?? 'output/pjperu-districts/pdfs';
 const pdfConc     = get('--pdf-concurrency') ?? '10';
 const limit       = get('--limit');
 const dryRun      = has('--dry-run');
 const resume      = has('--resume');
-const freshOutput = has('--fresh-output');
 const maxWorkers  = parseInt(get('--concurrency') ?? '20', 10);
 
-const outDir = 'output/pjperu-districts';
+// Each run gets its own timestamped folder — prevents --fresh-output or reruns
+// from wiping a previous extraction. PDFs are shared across runs (idempotent filenames).
+const ts     = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+const outDir = get('--out-dir') ?? `output/runs/${ts}`;
+const pdfDir = get('--pdf-dir') ?? 'output/pdfs';  // shared PDF store across runs
 mkdirSync(outDir, { recursive: true });
 if (pdfs) mkdirSync(pdfDir, { recursive: true });
+process.stdout.write(`  Run folder: ${outDir}\n  PDF store:  ${pdfDir}\n\n`);
 
 const entries    = Object.entries(DISTRICTS);
 const totalDist  = entries.length;
@@ -133,11 +136,11 @@ const spawnDistrict = (id, name) => new Promise(resolve => {
     'dist/cli.js', '--site', 'pj-peru', '--sector', '2', '--district', id,
     '--out', outFile, '--pdf-concurrency', pdfConc,
   ];
-  if (pdfs)        { cliArgs.push('--pdfs', '--pdf-dir', pdfDir); }
-  if (limit)       { cliArgs.push('--limit', limit); }
-  if (dryRun)      { cliArgs.push('--dry-run'); }
-  if (resume)      { cliArgs.push('--resume'); }
-  if (freshOutput) { cliArgs.push('--fresh-output'); }
+  if (pdfs)   { cliArgs.push('--pdfs', '--pdf-dir', pdfDir); }
+  if (limit)  { cliArgs.push('--limit', limit); }
+  if (dryRun) { cliArgs.push('--dry-run'); }
+  if (resume) { cliArgs.push('--resume'); }
+  // --fresh-output intentionally removed: timestamped folders make it unnecessary and dangerous
 
   startTimes.set(id, Date.now());
   activeCount++;
