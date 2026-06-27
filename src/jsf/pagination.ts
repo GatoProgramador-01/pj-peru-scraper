@@ -50,8 +50,9 @@ export const fetchNextPage = async (
 
   const { html, newViewState } = extractPartialResponse(resp.data);
   if (!html) {
-    logger.warn('Partial response empty — falling back to full GET', { targetPage: targetPageIndex });
-    return { $: await fetchStartPage(session, url), newViewState: null };
+    // Throw so withRetry retries the AJAX request — falling back to a full GET returns
+    // the empty search form (0 rows) which silently truncates the run.
+    throw new Error(`Partial AJAX response empty at page ${targetPageIndex} — retrying`);
   }
   const fragment = html.trim().startsWith('<tr')
     ? `<table><tbody>${html}</tbody></table>`
