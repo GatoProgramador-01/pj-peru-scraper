@@ -21,7 +21,10 @@ export const withRetry = async <T>(
       lastErr = err as Error;
       const waitFrom429 = extract429WaitMs(err);
       const is429 = waitFrom429 > 0;
-      const waitMs = is429 ? Math.max(waitFrom429, waits[i]) : waits[i];
+      const base = is429 ? Math.max(waitFrom429, waits[i]) : waits[i];
+      // Full jitter: pick uniformly from [base/2, base] to desynchronize retry storms
+      // when multiple workers fail at the same time and all retry simultaneously.
+      const waitMs = Math.round(base / 2 + Math.random() * (base / 2));
       if (metrics) {
         metrics.totalRetries++;
         if (is429) metrics.total429++;

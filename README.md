@@ -276,21 +276,24 @@ Con `scrape:oefa:parallel`: todos los sectores en paralelo, tiempo total = secto
 | --- | ---: | ---: | ---: | ---: | --- |
 | Prueba inicial (5 docs) | 5 | 5 | 0 | 0 | 35s |
 | Corrida validacion (100 docs, 10 paginas) | 100 | 100 | 0 | 0 | ~7m |
+| Test districtos — 34 distritos x 50 docs (20 workers) | 1,350 | 50 | 7 distritos* | 0 | ~3.5m |
+
+> *7 fallos por saturacion del pool de sesiones JSF — resuelto con startup jitter (ver seccion de paralelismo).
 
 **Escala real del dataset (medida en vivo):**
 
-| Corte | Docs totales | Paginas (10/pag) | Con PDFs (5 conc.) | Sin PDFs | Paralelo (ambas cortes) |
+| Corte | Docs totales | Paginas (10/pag) | Con PDFs (20 conc.) | Sin PDFs | Con paralelismo distrital |
 | --- | ---: | ---: | --- | --- | --- |
-| Suprema (buCorte=1) | 207,527 | 20,753 | ~34h | ~8h | — |
-| Superior/Todos (buCorte=2) | ~458,909 | ~45,891 | ~76h | ~18h | — |
-| **Ambas en paralelo** | **~666,436** | **~66,644** | **~76h** | **~18h** | la mas lenta dicta |
+| Suprema (buCorte=1) | 207,527 | 20,753 | ~17h | ~4h | — (1 corte nacional) |
+| Superior — sin paralelismo | ~458,909 | ~45,891 | ~76h | ~18h | — |
+| Superior — 34 distritos x 20 workers | ~458,909 | ~45,891 | ~8h | ~2h | 34x speedup |
+| **Ambas estrategias combinadas** | **~666,436** | **~66,644** | **~17h** | **~4h** | max(Suprema, Superior) |
 
-Estimacion basada en: 14 docs/min con PDFs (5 concurrentes) y ~100 docs/min sin PDFs.
-**Recomendacion operacional**: correr sin PDFs primero para obtener el JSONL completo (~18h), luego descarga de PDFs en segundo paso con mayor concurrencia.
+Estimacion de speedup: 34 distritos con 20 workers = 2 rondas de ~90min c/u. El bottleneck pasa a ser Suprema (~4h JSONL only).
 
 - PDFs via GET directo: `/jurisprudenciaweb/ServletDescarga?uuid=...` (298–453 KB por PDF)
-- 0 HTTP 429 observados; delay reducido a 800–1800ms entre paginas tras validacion.
-- Checkpoints por sector: reanudar con `npm run scrape:pjperu:full:resume` si se interrumpe.
+- 0 HTTP 429 observados en ninguna corrida; el servidor usa saturacion silenciosa (empty AJAX / HTTP 500), no 429.
+- Checkpoints por distrito: `output/checkpoint_pj-peru_s2_d18.json` — reanudar con `--resume`.
 
 Notas generales:
 
@@ -302,16 +305,17 @@ Notas generales:
 
 | Opcion | Uso |
 | --- | --- |
-| `--site oefa` | Portal validado actualmente |
-| `--site pj-peru` | Configuracion preparada para recon con VPN/proxy peruano |
-| `--sector 1` | Sector OEFA; `1=MINERIA`, `2=ELECTRICIDAD`, `3=HIDROCARBUROS`, `8=PESQUERIA`, `9=INDUSTRIA` |
+| `--site oefa` | Portal OEFA (PrimeFaces, sin VPN) |
+| `--site pj-peru` | Portal PJ Peru (RichFaces, requiere VPN Peru) |
+| `--sector 1` | OEFA: `1=MINERIA`, `2=ELECTRICIDAD`, `3=HIDROCARBUROS`, `8=PESQUERIA`, `9=INDUSTRIA`. PJ Peru: `1=SUPREMA`, `2=SUPERIOR` |
+| `--district 18` | PJ Peru solamente: filtra por distrito judicial (ej. `18=Lima`). Usado por `parallel-districts.mjs`. |
 | `--discover-sectors` | Lee sectores desde el portal y termina |
-| `--limit 100` | Limita documentos para pruebas |
+| `--limit 100` | Limita documentos (util para pruebas de menos de 10 min) |
 | `--pdfs` | Activa descarga de PDFs |
 | `--pdf-dir <dir>` | Directorio de PDFs |
 | `--pdf-concurrency 20` | Maximo de descargas PDF concurrentes por pagina |
 | `--fresh-output` | Limpia JSONL y `failed-pdfs.json` del destino antes de correr |
-| `--resume` | Retoma desde checkpoint por sitio/sector |
+| `--resume` | Retoma desde checkpoint por sitio/sector/distrito |
 | `--dry-run` | Recorre y loguea sin escribir salida |
 | `--proxy <url>` | Proxy HTTP/HTTPS para PJ Peru o redes restringidas |
 
@@ -330,45 +334,93 @@ Con `--resume`, el scraper:
 
 Para auditoria limpia, usar `--fresh-output`. Para continuidad operacional, usar `--resume`.
 
+## Paralelizacion Por Distrito — Por Que Y Como
+
+### El problema: un solo proceso para 459k documentos es demasiado lento
+
+La Corte Superior tiene ~459,000 documentos distribuidos en 34 distritos judiciales (Lima, Arequipa, Cusco, etc.). Si se consultan todos juntos (`buDistrito=0`, "Todos"), el scraper los navega en serie: pagina 1, pagina 2, ... pagina 45,891. Con el portal respondiendo a ~4-5 segundos por pagina, eso son **~51 horas** de corrida continua.
+
+### La solucion: un proceso por distrito
+
+Cada distrito tiene ~13,500 documentos en promedio. Si lanzamos 20 procesos en paralelo, cada uno filtrando un distrito diferente, el tiempo se reduce a **2 rondas de ~90 minutos = ~3 horas** para toda la Corte Superior.
+
+```
+Sin paralelismo:  1 proceso × 45,891 pages × 5s = 51h
+Con paralelismo: 34 distritos ÷ 20 workers × 1,350 pages × 5s ≈ 3h
+```
+
+### Root cause: saturacion del pool de sesiones JSF
+
+En el test inicial con 20 workers sin jitter, 7 de 34 distritos fallaron (79% de exito). Los errores no eran HTTP 429 — eran respuestas AJAX vacias (`Partial AJAX response empty`). Esto es saturacion silenciosa del servidor, no rate limiting formal.
+
+**Por que ocurre:** El servidor JSF/RichFaces mantiene un pool de sesiones y ViewStates activos en memoria. Cuando 20 procesos arrancan exactamente al mismo tiempo y todos hacen GET + POST de busqueda en el mismo segundo, el pool se satura y algunos requests reciben respuestas vacias en lugar de un error explicito.
+
+**Las 3 mejoras implementadas:**
+
+| Mejora | Donde | Efecto |
+| --- | --- | --- |
+| **Startup jitter** | `parallel-districts.mjs` | Cada worker espera `slotIdx × 600ms + random(800ms)` antes de arrancar. Los 20 workers se distribuyen en ~14 segundos en lugar de arrancar todos a la vez. Elimina la saturacion inicial. |
+| **Full jitter en retries** | `src/session/retry.ts` | Los reintentos usan `base/2 + random(base/2)` en lugar de tiempos fijos. Evita que todos los workers fallidos reintenten al mismo segundo, lo que volveria a saturar el servidor. |
+| **`setMaxListeners(0)`** | `parallel-districts.mjs` | Suprime el warning de Node.js sobre event listeners al tener 20+ streams activos. No afecta funcionalidad, solo limpieza de logs. |
+
+### Comandos de paralelismo distrital
+
+```bash
+# Validacion rapida — 34 distritos x 5 docs, sin PDFs (~2 min)
+npm run scrape:pjperu:districts:dry
+
+# Test de 10 minutos — 34 distritos x 50 docs, con PDFs (~3-5 min)
+npm run scrape:pjperu:districts:test
+
+# Corrida completa — Superior completo con PDFs (~3h con VPN)
+npm run scrape:pjperu:districts
+
+# Reanudar si se interrumpe
+npm run scrape:pjperu:districts:resume
+```
+
+Los archivos de salida se generan por distrito y luego se fusionan automaticamente:
+```
+output/pjperu-districts/
+  district-18-LIMA.jsonl       # docs del Distrito Lima
+  district-4-AREQUIPA.jsonl    # docs de Arequipa
+  ...
+  all-districts.jsonl          # fusion de todos los OK
+  pdfs/                        # PDFs descargados
+```
+
 ## Estrategia De Extraccion Masiva PJ Peru
 
-El dataset completo (~666k docs) no requiere descargarse de una sola vez. La estrategia optima en dos fases:
+El dataset completo (~666k docs) no requiere descargarse de una sola vez. La estrategia optima:
 
-### Fase 1 — JSONL sin PDFs (rapido)
-
-```bash
-node scripts/parallel-sectors.mjs --site pj-peru
-# Sin --pdfs: solo metadatos, ~100 docs/min, ambas cortes en paralelo
-# Tiempo estimado sin PDFs: ~18h para las 66,644 paginas totales
-```
-
-### Fase 2 — PDFs de los docs ya scrapeados
-
-Pendiente implementar: script separado que lee el JSONL y descarga PDFs
-con mayor concurrencia (20-50 en paralelo) sin re-navegar el portal.
-
-### Tabla de escenarios locales (sin VPN permanente)
-
-| Limite por corte | Docs totales | Sin PDFs | Con PDFs 5-conc | Paralelo |
-| --- | ---: | --- | --- | --- |
-| 100 paginas (demo) | ~2,000 | ~5 min | ~15 min | ~8 min |
-| 500 paginas | ~10,000 | ~25 min | ~1.5h | ~50 min |
-| 2,000 paginas | ~40,000 | ~1.5h | ~5h | ~2.5h |
-| Sin limite — JSONL only | ~666,436 | ~18h | — | ~18h |
-| Sin limite — con PDFs | ~666,436 | — | ~76h | ~76h |
-
-Comandos por escenario:
+### Opcion A — Distritos paralelos (recomendada, ~4h total)
 
 ```bash
-# Demo rapida (2000 docs, ambas cortes, sin PDFs, ~8 min):
-node scripts/parallel-sectors.mjs --site pj-peru --limit 1000
-
-# Muestra profunda con PDFs (~15 min):
-node scripts/parallel-sectors.mjs --site pj-peru --limit 1000 --pdfs --pdf-dir output/pjperu-full/pdfs --pdf-concurrency 5
-
-# Correr solo JSONL completo y luego PDFs por separado:
-node scripts/parallel-sectors.mjs --site pj-peru
+# Suprema en un proceso + Superior en 34 distritos paralelos
+node dist/cli.js --site pj-peru --sector 1 --out output/pjperu-suprema.jsonl &
+npm run scrape:pjperu:districts
+# El bottleneck es Suprema (~4h sin PDFs). Superior termina en ~2h.
 ```
+
+### Opcion B — Solo metadatos primero, PDFs despues
+
+```bash
+# Fase 1: JSONL sin PDFs (mucho mas rapido)
+npm run scrape:pjperu:districts  # sin --pdfs en package.json, editar si se prefiere
+
+# Fase 2 (pendiente implementar): leer JSONL y descargar PDFs sin re-navegar el portal
+# node scripts/pdf-only.mjs --input output/pjperu-districts/all-districts.jsonl --concurrency 50
+```
+
+### Tabla de escenarios (referencia)
+
+| Escenario | Docs | Tiempo estimado |
+| --- | ---: | --- |
+| Dry-run validacion | 5/distrito = 170 | ~1 min |
+| Test 10 min (50/distrito) | 1,700 | ~3-5 min |
+| Superior completo con distritos | ~459,000 | ~3h |
+| Suprema completa (1 proceso) | ~207,000 | ~4h |
+| Todo PJ Peru con paralelismo | ~666,000 | ~4h (paralelo) |
 
 ## PJ Peru — Diferencias Tecnicas Respecto A OEFA
 
@@ -398,9 +450,10 @@ node dist/cli.js --site pj-peru --limit 100 --pdfs --pdf-dir output/pjperu/pdfs 
 2. `npm run simulate:429` — confirmar que salida muestra `"ok": true`.
 3. `npm run scrape:oefa:test100` — corrida OEFA limpia de 100 docs.
 4. `node dist/cli.js --site pj-peru --dry-run --limit 20` (con VPN peru) — confirmar 2+ paginas.
-5. Revisar `run-summary.json` y `failed-pdfs.json`.
-6. Confirmar que `confidential` no aparece como `failedDownload`.
-7. Compartir rama `feat/oefa-full-extraction` o `main` con artefactos documentados.
+5. `npm run scrape:pjperu:districts:dry` (con VPN peru) — confirmar 34/34 distritos OK.
+6. Revisar `run-summary.json` y `failed-pdfs.json`.
+7. Confirmar que `confidential` no aparece como `failedDownload`.
+8. Compartir rama `feat/pj-peru-full-extraction` o `main` con artefactos documentados.
 
 ## Guia Para Un Futuro Colega
 

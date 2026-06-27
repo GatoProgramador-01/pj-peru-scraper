@@ -85,23 +85,15 @@ console.log(`  ${entries.length} distritos | max ${maxWorkers} workers simultán
 console.log(`${'='.repeat(70)}\n`);
 
 const results = [];
-let active = 0;
 let idx = 0;
 
-const runNext = () => new Promise(resolve => {
-  if (idx >= entries.length) return resolve();
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  const [id, name] = entries[idx++];
+const spawnDistrict = (id, name) => new Promise(resolve => {
   const outFile = `${outDir}/district-${id}-${name}.jsonl`;
-  active++;
-
   const cliArgs = [
-    'dist/cli.js',
-    '--site', 'pj-peru',
-    '--sector', '2',
-    '--district', id,
-    '--out', outFile,
-    '--pdf-concurrency', pdfConc,
+    'dist/cli.js', '--site', 'pj-peru', '--sector', '2', '--district', id,
+    '--out', outFile, '--pdf-concurrency', pdfConc,
   ];
   if (pdfs)   { cliArgs.push('--pdfs', '--pdf-dir', pdfDir); }
   if (limit)  { cliArgs.push('--limit', limit); }
@@ -112,13 +104,14 @@ const runNext = () => new Promise(resolve => {
   console.log(`  🐈 START ${pad} → ${outFile}`);
 
   const proc = spawn('node', cliArgs, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+  proc.stdout.setMaxListeners(0);
+  proc.stderr.setMaxListeners(0);
   proc.stdout.on('data', buf =>
     buf.toString().split('\n').filter(Boolean).forEach(l => process.stdout.write(`${pad} ${l}\n`)));
   proc.stderr.on('data', buf =>
     buf.toString().split('\n').filter(Boolean).forEach(l => process.stderr.write(`${pad} ERR ${l}\n`)));
 
   proc.on('close', code => {
-    active--;
     const icon = code === 0 ? '😻' : '❌';
     console.log(`  ${icon} DONE  ${pad} exit ${code}`);
     results.push({ id, name, outFile, code });
@@ -126,10 +119,15 @@ const runNext = () => new Promise(resolve => {
   });
 });
 
-// Concurrency pool: keep maxWorkers slots busy until all districts are done
-const pool = Array.from({ length: Math.min(maxWorkers, entries.length) }, async () => {
+// Concurrency pool with startup jitter:
+// Each slot waits slotIdx * 600ms + random(800ms) before its FIRST launch.
+// This spreads the initial thundering herd across ~12-20s instead of all hitting T=0.
+const pool = Array.from({ length: Math.min(maxWorkers, entries.length) }, async (_, slotIdx) => {
+  const jitterMs = slotIdx * 600 + Math.random() * 800;
+  if (slotIdx > 0) await sleep(jitterMs);
   while (idx < entries.length) {
-    await runNext();
+    const [id, name] = entries[idx++];
+    await spawnDistrict(id, name);
   }
 });
 await Promise.all(pool);
