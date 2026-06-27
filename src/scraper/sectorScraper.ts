@@ -97,18 +97,19 @@ const downloadPagePdfs = async (
     pdfSkippedExistingThisPage: 0,
   };
 
-  const directIndexes: number[] = [];
-  const jsfIndexes: number[] = [];
+  // Classify candidates; non-candidates (confidential / missing) are resolved immediately.
+  type Candidate = { index: number; isJsf: boolean };
+  const candidates: Candidate[] = [];
 
   for (let i = 0; i < docs.length; i++) {
     const doc = docs[i];
     const row = rows[i];
     if (doc.pdfUrl) {
       metrics.totalPdfCandidates++;
-      directIndexes.push(i);
+      candidates.push({ index: i, isJsf: false });
     } else if (row?.pdfJsfAction) {
       metrics.totalPdfCandidates++;
-      jsfIndexes.push(i);
+      candidates.push({ index: i, isJsf: true });
     } else {
       const status = isConfidentialDocument(doc) ? 'confidential' : 'missingJsfAction';
       processPdfResult(
@@ -126,29 +127,25 @@ const downloadPagePdfs = async (
     }
   }
 
-  const totalCandidates = directIndexes.length + jsfIndexes.length;
+  // Download all PDF candidates concurrently in batches of pdfConcurrency.
+  // absorbCookies() in downloadJsfActionPdf is synchronous on promise resolution,
+  // so Node.js single-thread guarantees no cookie-jar race condition.
   let doneCount = 0;
+  const totalCandidates = candidates.length;
 
-  for (let i = 0; i < directIndexes.length; i += pdfConcurrency) {
-    const chunk = directIndexes.slice(i, i + pdfConcurrency);
-    const results = await Promise.all(chunk.map(async index => ({
+  for (let i = 0; i < candidates.length; i += pdfConcurrency) {
+    const chunk = candidates.slice(i, i + pdfConcurrency);
+    const results = await Promise.all(chunk.map(async ({ index, isJsf }) => ({
       index,
-      result: await downloadPdf(session, docs[index], pdfDir),
+      result: isJsf
+        ? await downloadJsfActionPdf(session, config, viewState, rows[index].pdfJsfAction!, docs[index], pdfDir)
+        : await downloadPdf(session, docs[index], pdfDir),
     })));
     for (const { index, result } of results) {
       processPdfResult(docs[index], result, metrics, failedPdfs, pageStats);
       onProgress?.(++doneCount, totalCandidates);
     }
-    if (i + pdfConcurrency < directIndexes.length) await jitter(...config.timing.pdfDelayMs);
-  }
-
-  // JSF action PDF downloads reuse the page ViewState and mutate cookies, so keep them sequential.
-  for (const index of jsfIndexes) {
-    const row = rows[index];
-    const result = await downloadJsfActionPdf(session, config, viewState, row.pdfJsfAction!, docs[index], pdfDir);
-    processPdfResult(docs[index], result, metrics, failedPdfs, pageStats);
-    onProgress?.(++doneCount, totalCandidates);
-    await jitter(...config.timing.pdfDelayMs);
+    if (i + pdfConcurrency < candidates.length) await jitter(...config.timing.pdfDelayMs);
   }
 
   return pageStats;

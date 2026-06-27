@@ -55,8 +55,8 @@ export const SITES: Record<string, SiteConfig> = {
       noResults: '.ui-datatable-empty-message',
     },
     timing: {
-      pageDelayMs: [800, 2000],
-      pdfDelayMs: [300, 800],
+      pageDelayMs: [200, 600],
+      pdfDelayMs: [0, 100],
       retryWaitMs: [5000, 12000, 25000],
       navigationTimeoutMs: 40_000,
       selectorTimeoutMs: 20_000,
