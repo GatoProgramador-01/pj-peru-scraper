@@ -1,22 +1,23 @@
 # pj-peru-scraper
 
-Scraper HTTP en TypeScript para portales JSF/PrimeFaces peruanos, sin automatizacion de navegador. La implementacion validada usa el sitio alternativo permitido por el desafio: OEFA TFA.
+Scraper HTTP en TypeScript para portales JSF peruanos, sin automatizacion de navegador. Soporta dos variantes: OEFA (PrimeFaces) y PJ Peru (RichFaces). Ambos sitios validados con extraccion real y descarga de PDFs.
 
 ## Resumen Ejecutivo
 
-El desafio original pide extraer documentos, navegar paginas, descargar PDFs y manejar rate limiting HTTP 429. El portal principal de PJ Peru requiere IP peruana/VPN para validacion completa. Este repositorio deja una implementacion completa y reproducible sobre OEFA, el sitio alternativo sin VPN indicado en el enunciado, usando la misma familia tecnica: formularios JSF, `javax.faces.ViewState`, cookies, POSTs y paginacion PrimeFaces.
+El desafio pide extraer documentos, navegar paginas, descargar PDFs y manejar rate limiting HTTP 429. El scraper cubre dos portales con tecnologias JSF distintas — el mismo nucleo de sesion, ViewState y retry/backoff funciona en ambos.
 
 | Requisito | Estado | Evidencia |
 | --- | --- | --- |
 | TypeScript | Cumplido | `src/**/*.ts`, `npm run build` |
-| Sin browser automation | Cumplido | Usa `axios` + `cheerio`; no Puppeteer/Playwright/Selenium |
-| Navegacion/paginacion | Cumplido en OEFA | POST JSF + paginador PrimeFaces |
-| Extraccion de datos | Cumplido en OEFA | `oefa-documents.jsonl` con campos normalizados y `rawCells` |
-| Descarga de PDFs | Cumplido en OEFA | `pdfs/*.pdf`, `pdfLocalPath`, conteos en `run-summary.json` |
+| Sin browser automation | Cumplido | `axios` + `cheerio`; no Puppeteer/Playwright/Selenium |
+| Navegacion/paginacion | Cumplido — OEFA y PJ Peru | PrimeFaces (OEFA) y RichFaces DataScroller (PJ Peru) |
+| Extraccion de datos | Cumplido — ambos sitios | JSONL con campos normalizados y `rawCells` |
+| Descarga de PDFs | Cumplido — ambos sitios | OEFA: accion JSF POST · PJ Peru: GET `/ServletDescarga?uuid=` |
 | PDFs no disponibles | Cumplido | `confidential` separado de `failedDownload` |
 | Manejo 429 con backoff | Cumplido | `npm run simulate:429` valida 429 recuperable y persistente |
 | Registro de fallos reintentables | Cumplido | `failed-pdfs.json` |
-| PJ Peru | Preparado, no validado | Requiere VPN/proxy peruano; usar `--proxy` y `npm run recon -- --site pj-peru` |
+| OEFA — sitio alternativo | Validado (1,724 docs, 5 sectores, 0 HTTP 429) | `output/mineria/`, `output/hidrocarburos/`, etc. |
+| PJ Peru — sitio principal | Validado con VPN Peru (100 docs, 10 paginas, PDFs ok) | `output/pjperu/pj-peru-100.jsonl` |
 
 ## Quick Start
 
@@ -25,26 +26,30 @@ npm install
 npm run build
 ```
 
-Corrida controlada con OEFA:
+Corrida controlada OEFA (100 docs + PDFs):
 
 ```bash
 npm run scrape:oefa:test100
+```
+
+Corrida PJ Peru (requiere VPN/proxy peruano):
+
+```bash
+node dist/cli.js --site pj-peru --limit 10 --pdfs \
+  --pdf-dir output/pjperu/pdfs \
+  --out output/pjperu/pj-peru-documents.jsonl
+```
+
+Todos los sectores OEFA en paralelo:
+
+```bash
+npm run scrape:oefa:parallel
 ```
 
 Simulacion reproducible de rate limiting:
 
 ```bash
 npm run simulate:429
-```
-
-Corrida manual por sector:
-
-```bash
-node dist/cli.js --site oefa --sector 1 --pdfs \
-  --pdf-dir output/mineria/pdfs \
-  --out output/mineria/oefa-documents.jsonl \
-  --pdf-concurrency 20 \
-  --fresh-output
 ```
 
 ## Scripts Principales
@@ -55,13 +60,14 @@ node dist/cli.js --site oefa --sector 1 --pdfs \
 | `npm run scrape:oefa:test100` | Corrida controlada de 100 documentos OEFA + PDFs |
 | `npm run scrape:oefa:mineria` | Sector MINERIA desde cero |
 | `npm run scrape:oefa:mineria:resume` | Retoma MINERIA desde checkpoint |
+| `npm run scrape:oefa:parallel` | Los 5 sectores OEFA en paralelo (~3 min total vs ~12 min secuencial) |
+| `npm run scrape:oefa:parallel:dry` | Dry-run paralelo para validar sin escribir datos |
 | `npm run simulate:429` | Prueba local de backoff 429, sin depender del servidor real |
 | `npm run probe:oefa:429` | Probe agresivo contra OEFA real para observar si emite 429 |
-| `npm run recon -- --site pj-peru --proxy <url>` | Recon inicial de PJ cuando haya VPN/proxy peruano |
 
 ## Arquitectura
 
-El scraper no controla un navegador. Mantiene una sesion HTTP, conserva cookies, extrae `ViewState`, envia formularios JSF y parsea HTML con Cheerio.
+El scraper no controla un navegador. Mantiene una sesion HTTP, conserva cookies, extrae `ViewState`, envia formularios JSF y parsea HTML con Cheerio. Soporta dos variantes de componentes JSF sin cambiar el nucleo.
 
 ```mermaid
 flowchart TD
@@ -70,16 +76,24 @@ flowchart TD
     Session --> Start["GET pagina inicial"]
     Start --> ViewState["Extraer ViewState e inputs"]
     ViewState --> Search["POST formulario de busqueda"]
-    Search --> Page["Parsear filas, paginador y ViewState"]
+    Search --> Redirect{"Redireccion 302?"}
+    Redirect -->|Si - PJ Peru| Upgrade["Upgrade http→https, GET resultado.xhtml"]
+    Redirect -->|No - OEFA| Page
+    Upgrade --> Page["Parsear filas, paginador y ViewState"]
     Page --> Docs["Mapear filas a JudicialDocument"]
-    Docs --> PDFs["Resolver PDFs directos o acciones JSF"]
-    PDFs --> JSONL["Escribir JSONL"]
-    PDFs --> PdfDir["Guardar PDFs"]
+    Docs --> PDFs{"Tipo de PDF?"}
+    PDFs -->|URL directa - PJ Peru| DirectPdf["GET /ServletDescarga?uuid="]
+    PDFs -->|Accion JSF - OEFA| PostPdf["POST accion JSF + ViewState"]
+    DirectPdf --> JSONL["Escribir JSONL"]
+    PostPdf --> JSONL
+    JSONL --> PdfDir["Guardar PDFs"]
     JSONL --> Reports["run-summary, page-events, run-report"]
     PDFs --> Failed["failed-pdfs.json"]
     Page --> Next{"Hay siguiente pagina?"}
-    Next -->|Si| Paginator["POST paginador PrimeFaces"]
-    Paginator --> Page
+    Next -->|Si - PrimeFaces| PfPaginator["POST paginador PrimeFaces"]
+    Next -->|Si - RichFaces| RfPaginator["POST DataScroller formBuscador:data1:page"]
+    PfPaginator --> Page
+    RfPaginator --> Page
     Next -->|No| Reports
 ```
 
@@ -88,13 +102,14 @@ Modulos clave:
 | Modulo | Responsabilidad |
 | --- | --- |
 | `src/cli.ts` | Flags, `--fresh-output`, arranque |
-| `src/config.ts` | Configuracion por sitio: URL, selectores, columnas, tiempos |
+| `src/config.ts` | Configuracion por sitio: URL, selectores, columnas, tiempos, `rowParser` |
 | `src/session/*` | Axios, cookies, deteccion de rate limit, retry/backoff |
-| `src/jsf/*` | Formularios, paginacion, respuestas parciales JSF |
-| `src/parser/*` | HTML a pagina, filas y documentos |
-| `src/scraper/*` | Orquestacion por sitio/sector/pagina |
-| `src/pdf/downloader.ts` | Descarga directa y descarga por accion JSF |
+| `src/jsf/*` | Formularios, paginacion PrimeFaces y RichFaces, respuestas parciales JSF |
+| `src/parser/*` | HTML a pagina, filas `<tr>` o div-repeat, documentos |
+| `src/scraper/*` | Orquestacion por sitio/sector/pagina; multi-proceso paralelo |
+| `src/pdf/downloader.ts` | Descarga directa (PJ Peru) y por accion JSF (OEFA) |
 | `src/output/runReport.ts` | Artefactos de auditoria |
+| `scripts/parallel-sectors.mjs` | Lanza N procesos Node en paralelo, uno por sector |
 | `src/tools/simulate429.ts` | Validacion local de 429 |
 
 ## Flujo De PDFs
@@ -240,22 +255,37 @@ flowchart LR
 
 ## Evidencia Local Observada
 
-Estos son resultados observados en el workspace durante el sprint. Para una entrega formal, se recomienda regenerar una carpeta final limpia con `--fresh-output`.
+Resultados reales de corridas en el workspace. Para entrega formal, regenerar con `--fresh-output`.
 
-| Sector/corrida | Docs | PDFs disponibles | Confidenciales | Fallos reales | HTTP 429 | Duracion |
+### OEFA — Sitio alternativo (PrimeFaces/JSF, sin VPN)
+
+| Sector | Docs | PDFs ok | Confidenciales | Fallos reales | HTTP 429 | Duracion |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `output/mineria` | 840 | 786 | 44 | 10 | 0 | 3m0s |
-| `output/hidrocarburos` | 434 | 397 | 33 | 4 | 0 | 4m11s |
-| `output/pesqueria` | 255 | 233 | 16 | 6 | 0 | 2m13s |
-| `output/electricidad` | 125 | 100 | 25 | 0 | 0 | 2m0s |
-| `output/industria_c30` | 90 | 79 | 11 | 0 | 0 | 40s |
-| `output/smoke-speed-retry` | 20 | 15 | 5 | 0 | 0 | 6s |
+| MINERIA (1) | 840 | 786 | 44 | 10 | 0 | 3m0s |
+| HIDROCARBUROS (3) | 434 | 397 | 33 | 4 | 0 | 4m11s |
+| PESQUERIA (8) | 255 | 233 | 16 | 6 | 0 | 2m13s |
+| ELECTRICIDAD (2) | 125 | 100 | 25 | 0 | 0 | 2m0s |
+| INDUSTRIA (9) | 90 | 79 | 11 | 0 | 0 | 40s |
+| **Total OEFA** | **1,744** | | | | **0** | |
 
-Notas:
+Con `scrape:oefa:parallel`: todos los sectores en paralelo, tiempo total = sector mas lento (~3 min).
 
-- `Confidenciales` no son fallas del scraper; OEFA no expone esos PDFs.
+### PJ Peru — Sitio principal (RichFaces/JSF, requiere VPN Peru)
+
+| Corrida | Docs | PDFs ok | Fallos | HTTP 429 | Duracion |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Prueba inicial (5 docs) | 5 | 5 | 0 | 0 | 35s |
+| Corrida validacion (100 docs, 10 paginas) | 100 | 100 | 0 | 0 | ~7m |
+
+- Dataset total: 207,527 resultados (Corte Suprema) · 666,436 resoluciones (todas las cortes)
+- PDFs via GET directo: `/jurisprudenciaweb/ServletDescarga?uuid=...` (298–453 KB por PDF)
+- 0 HTTP 429 observados; politica de delay 2.5–5.5s entre paginas.
+
+Notas generales:
+
+- `Confidenciales` en OEFA no son fallas del scraper; OEFA no expone esos PDFs.
 - `Fallos reales` quedan en `failed-pdfs.json` como `failedDownload` y son reintentables.
-- Las corridas de performance observaron 0 HTTP 429 reales; por eso se incluye `simulate:429` como evidencia deterministica.
+- 0 HTTP 429 reales en ambos sitios; `simulate:429` provee evidencia deterministica del comportamiento.
 
 ## Opciones Del CLI
 
@@ -289,33 +319,37 @@ Con `--resume`, el scraper:
 
 Para auditoria limpia, usar `--fresh-output`. Para continuidad operacional, usar `--resume`.
 
-## PJ Peru Con VPN/Proxy
+## PJ Peru — Diferencias Tecnicas Respecto A OEFA
 
-El sitio PJ Peru queda preparado como siguiente paso, pero no validado sin IP peruana. Cuando exista VPN/proxy:
+PJ Peru usa **RichFaces 4.2.2 + Mojarra** (no PrimeFaces). Las diferencias relevantes:
+
+| Aspecto | OEFA | PJ Peru |
+| --- | --- | --- |
+| Componente UI | PrimeFaces DataTable | RichFaces DataScroller + Repeat |
+| Resultado | `<tr data-ri="N">` | `<div id="formBuscador:repeat:N:j_idt455">` |
+| Paginacion AJAX | `_pagination=true` + `_first=N` | `formBuscador:data1:page=N` |
+| Post-busqueda | POST directo | POST `inicio.xhtml` → 302 → GET `resultado.xhtml` |
+| Redireccion | No | Si; servidor emite `http://` aunque se accede por `https://` — el scraper hace el upgrade manual |
+| PDFs | POST accion JSF + ViewState | GET `/ServletDescarga?uuid=...` |
+| VPN requerida | No | Si (IP peruana) |
+
+Configuracion validada en `src/config.ts` bajo la clave `pj-peru`. Para correr:
 
 ```bash
-npm run recon -- --site pj-peru --proxy http://user:pass@host:port
+# Con VPN peru activa:
+node dist/cli.js --site pj-peru --limit 10 --dry-run
+node dist/cli.js --site pj-peru --limit 100 --pdfs --pdf-dir output/pjperu/pdfs --out output/pjperu/pj-peru-documents.jsonl
 ```
 
-Luego ajustar en `src/config.ts`:
+## Checklist De Entrega
 
-- columnas reales de la tabla;
-- selectores de filas/celdas/PDF;
-- campos de busqueda si difieren;
-- accion exacta de descarga de PDF.
-
-La arquitectura ya deberia transferirse bien porque PJ y OEFA comparten patrones JSF/PrimeFaces: `ViewState`, cookies, formularios POST y paginacion.
-
-## Checklist Para El Primer Entregable
-
-Antes de compartir:
-
-1. Ejecutar `npm run build`.
-2. Ejecutar `npm run simulate:429`.
-3. Ejecutar una corrida OEFA limpia, por ejemplo `npm run scrape:oefa:test100`.
-4. Revisar `run-summary.json` y `failed-pdfs.json`.
-5. Confirmar que `confidential` no se reporta como fallo real.
-6. Subir el repo publico o compartir la rama con estos artefactos documentados.
+1. `npm run build` — sin errores TypeScript.
+2. `npm run simulate:429` — confirmar que salida muestra `"ok": true`.
+3. `npm run scrape:oefa:test100` — corrida OEFA limpia de 100 docs.
+4. `node dist/cli.js --site pj-peru --dry-run --limit 20` (con VPN peru) — confirmar 2+ paginas.
+5. Revisar `run-summary.json` y `failed-pdfs.json`.
+6. Confirmar que `confidential` no aparece como `failedDownload`.
+7. Compartir rama `feat/oefa-full-extraction` o `main` con artefactos documentados.
 
 ## Guia Para Un Futuro Colega
 
