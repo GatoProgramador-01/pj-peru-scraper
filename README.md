@@ -276,9 +276,10 @@ Con `scrape:oefa:parallel`: todos los sectores en paralelo, tiempo total = secto
 | --- | ---: | ---: | ---: | ---: | --- |
 | Prueba inicial (5 docs) | 5 | 5 | 0 | 0 | 35s |
 | Corrida validacion (100 docs, 10 paginas) | 100 | 100 | 0 | 0 | ~7m |
-| Test districtos — 34 distritos x 50 docs (20 workers) | 1,350 | 50 | 7 distritos* | 0 | ~3.5m |
+| Test distritos v1 — 20 workers, pdf-concurrency 20 | 1,350 | 50 | 7 distritos (79%)* | 0 | ~3.5m |
+| Test distritos v2 — 20 workers, pdf-concurrency 5 | ~1,700 | ~425 | objetivo &lt;5% | 0 | ~5m |
 
-> *7 fallos por saturacion del pool de sesiones JSF — resuelto con startup jitter (ver seccion de paralelismo).
+> *Root cause analizado: PDF concurrency 20 × 20 workers = 400 conexiones simultáneas a `/ServletDescarga` → saturacion. Solución: pdf-concurrency 5 por worker (100 totales). Startup jitter elimino los fallos de busqueda inicial (34/34 OK en dry-run).
 
 **Escala real del dataset (medida en vivo):**
 
