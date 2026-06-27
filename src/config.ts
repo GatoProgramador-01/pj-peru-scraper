@@ -29,9 +29,9 @@ export const SITES: Record<string, SiteConfig> = {
       noResults: '[id*="optResultado"]',
     },
     timing: {
-      // Aggressive timing — 0 HTTP 429 observed across all test runs with VPN.
-      pageDelayMs: [800, 1800],
-      pdfDelayMs: [200, 600],
+      // Delay 0: maximum throughput to stress-test rate limiting and validate backoff.
+      pageDelayMs: [0, 0],
+      pdfDelayMs: [0, 0],
       retryWaitMs: [8000, 16000, 35000],
       navigationTimeoutMs: 45_000,
       selectorTimeoutMs: 20_000,
