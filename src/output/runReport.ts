@@ -33,7 +33,7 @@ const writeJsonl = (filePath: string, rows: unknown[]): void => {
 export const writeRunReports = ({
   opts,
   metrics,
-  failedPdfs,
+  failedPdfs: _failedPdfs,
   pageEvents,
   elapsedMs,
   docsPerMinute,

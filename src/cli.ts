@@ -21,6 +21,7 @@ import type { ScrapeOptions } from './types.js';
 // Without this, process.stdout.write() buffers in ~64 KB chunks when stdout
 // is redirected to a file (non-TTY), so Get-Content -Wait sees nothing until
 // the buffer fills or the process exits.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (process.stdout as any)._handle?.setBlocking?.(true);
 
 const argv = await yargs(hideBin(process.argv))

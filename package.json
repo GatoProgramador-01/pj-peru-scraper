@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --max-warnings 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "ci": "npm run typecheck && npm run build && npm run lint && npm run test",
     "start": "node dist/cli.js",
     "recon": "node dist/recon.js",
     "scrape:oefa:test100": "npm run build && node dist/cli.js --site oefa --limit 100 --pdfs --pdf-dir output/test100/pdfs --out output/test100/oefa-documents.jsonl --pdf-concurrency 4 --fresh-output",
@@ -31,6 +37,11 @@
   "devDependencies": {
     "@types/node": "20.14.10",
     "@types/yargs": "17.0.32",
-    "typescript": "5.5.3"
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "eslint": "^10.6.0",
+    "typescript": "5.5.3",
+    "vitest": "^4.1.9"
   }
 }

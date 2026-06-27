@@ -1,9 +1,7 @@
 import { type AxiosResponse } from 'axios';
 import { load as cheerioLoad } from 'cheerio';
-import { logger } from '../logger.js';
 import type { $Root, ParsedPage, Session } from '../models/internalTypes.js';
 import { absorbCookies, cookieHeader } from '../session/cookies.js';
-import { fetchStartPage } from '../session/session.js';
 import { isRateLimited } from '../session/rateLimit.js';
 import { extractPartialResponse } from './partialResponse.js';
 
