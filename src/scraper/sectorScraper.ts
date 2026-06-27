@@ -290,10 +290,12 @@ export const scrapeSector = async (
       toWrite.length,
       totalScraped,
       runLimit,
+      page.totalRecords ?? null,
       pdfOk,
       pagePdfStats.pdfConfidentialThisPage,
       pagePdfStats.pdfFailedThisPage,
       elapsed(),
+      docsPerMin,
     );
 
     logger.info('Page scraped', {

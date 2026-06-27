@@ -17,6 +17,12 @@ import { scrapeAll, discoverSectors } from './http-scraper.js';
 import { logger } from './logger.js';
 import type { ScrapeOptions } from './types.js';
 
+// Force synchronous (unbuffered) stdout writes on Windows pipes.
+// Without this, process.stdout.write() buffers in ~64 KB chunks when stdout
+// is redirected to a file (non-TTY), so Get-Content -Wait sees nothing until
+// the buffer fills or the process exits.
+(process.stdout as any)._handle?.setBlocking?.(true);
+
 const argv = await yargs(hideBin(process.argv))
   .option('site', {
     type: 'string',
