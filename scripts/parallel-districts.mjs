@@ -72,7 +72,7 @@ const pdfConc    = get('--pdf-concurrency') ?? '10';
 const limit      = get('--limit');
 const dryRun     = has('--dry-run');
 const resume     = has('--resume');
-const maxWorkers = parseInt(get('--concurrency') ?? '10', 10);
+const maxWorkers = parseInt(get('--concurrency') ?? '20', 10);
 
 const outDir = 'output/pjperu-districts';
 mkdirSync(outDir, { recursive: true });

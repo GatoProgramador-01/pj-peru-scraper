@@ -17,9 +17,10 @@
     "scrape:pjperu:full": "npm run build && node scripts/parallel-sectors.mjs --site pj-peru --pdfs --pdf-dir output/pjperu-full/pdfs --pdf-concurrency 5",
     "scrape:pjperu:full:resume": "npm run build && node scripts/parallel-sectors.mjs --site pj-peru --pdfs --pdf-dir output/pjperu-full/pdfs --pdf-concurrency 5 --resume",
     "scrape:pjperu:full:dry": "npm run build && node scripts/parallel-sectors.mjs --site pj-peru --dry-run --limit 20",
-    "scrape:pjperu:districts": "npm run build && node scripts/parallel-districts.mjs --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 10 --concurrency 10",
+    "scrape:pjperu:districts": "npm run build && node scripts/parallel-districts.mjs --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 20 --concurrency 20",
     "scrape:pjperu:districts:dry": "npm run build && node scripts/parallel-districts.mjs --dry-run --limit 5 --concurrency 5",
-    "scrape:pjperu:districts:resume": "npm run build && node scripts/parallel-districts.mjs --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 10 --concurrency 10 --resume"
+    "scrape:pjperu:districts:test": "npm run build && node scripts/parallel-districts.mjs --limit 50 --concurrency 20 --pdf-concurrency 20 --pdfs --pdf-dir output/pjperu-districts/pdfs",
+    "scrape:pjperu:districts:resume": "npm run build && node scripts/parallel-districts.mjs --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 20 --concurrency 20 --resume"
   },
   "dependencies": {
     "axios": "1.7.2",
