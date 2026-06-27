@@ -39,6 +39,18 @@ const argv = await yargs(hideBin(process.argv))
     type: 'string',
     describe: 'pj-peru only: district ID to filter buDistrito (e.g. 18=Lima). Used by parallel-districts.mjs.',
   })
+  .option('year', {
+    type: 'string',
+    describe: 'pj-peru only: year filter for formBuscador:buAnio. Useful for Suprema parallel partitions.',
+  })
+  .option('specialty', {
+    type: 'string',
+    describe: 'pj-peru only: specialty ID filter for formBuscador:buEspecialidad.',
+  })
+  .option('checkpoint-id', {
+    type: 'string',
+    describe: 'Optional checkpoint partition suffix for parallel workers on the same site/sector.',
+  })
   .option('discover-sectors', {
     type: 'boolean',
     default: false,
@@ -47,7 +59,7 @@ const argv = await yargs(hideBin(process.argv))
   .option('out', {
     type: 'string',
     default: 'output/results.jsonl',
-    describe: 'Output JSONL file (append-safe — crash-resumable)',
+    describe: 'Output JSONL file. Workers write completed partitions at the end.',
   })
   .option('pdfs', {
     type: 'boolean',
@@ -117,8 +129,15 @@ const opts: ScrapeOptions = {
   resume: argv.resume,
   sectorId: argv.sector ?? null,
   districtId: argv.district ?? null,
+  searchFields: {
+    ...(argv.year ? { 'formBuscador:buAnio': argv.year } : {}),
+    ...(argv.specialty ? { 'formBuscador:buEspecialidad': argv.specialty } : {}),
+  },
+  checkpointId: argv['checkpoint-id'] ?? null,
   pdfConcurrency: Math.max(1, argv['pdf-concurrency'] ?? 1),
 };
+
+if (Object.keys(opts.searchFields ?? {}).length === 0) delete opts.searchFields;
 
 opts.failedPdfPath = `${opts.outputPath.replace(/[^/\\]+$/, '')}failed-pdfs.json`;
 
@@ -126,6 +145,9 @@ logger.info('Starting scrape', {
   site: opts.site,
   dryRun: opts.dryRun,
   sectorId: opts.sectorId,
+  districtId: opts.districtId,
+  searchFields: opts.searchFields,
+  checkpointId: opts.checkpointId,
   limit: opts.limit,
   pdfDir: opts.pdfDir,
   pdfConcurrency: opts.pdfConcurrency,

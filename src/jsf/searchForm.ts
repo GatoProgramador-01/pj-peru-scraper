@@ -10,6 +10,18 @@ import { absorbCookies, cookieHeader } from '../session/cookies.js';
 import { isRateLimited } from '../session/rateLimit.js';
 import { extractPartialResponse } from './partialResponse.js';
 
+const appendSearchOverrides = (
+  params: [string, string][],
+  sectorField: string | undefined,
+  sectorId?: string | null,
+  districtId?: string | null,
+  searchFields?: Record<string, string>,
+): void => {
+  if (sectorId && sectorField) params.push([sectorField, sectorId]);
+  if (districtId) params.push(['formBuscador:buDistrito', districtId]);
+  if (searchFields) params.push(...Object.entries(searchFields));
+};
+
 export const submitSearch = async (
   session: Session,
   url: string,
@@ -17,11 +29,18 @@ export const submitSearch = async (
   config: SiteConfig,
   sectorId?: string | null,
   districtId?: string | null,
+  searchFields?: Record<string, string>,
 ): Promise<ParsedPage> => {
   if (!config.search) return page;
 
   const { buttonId, buttonValue, formId, fields, ajax, sectorField } = config.search;
-  logger.info('Submitting search form', { buttonId, ajax, sectorId: sectorId ?? 'none', districtId: districtId ?? 'none' });
+  logger.info('Submitting search form', {
+    buttonId,
+    ajax,
+    sectorId: sectorId ?? 'none',
+    districtId: districtId ?? 'none',
+    searchFields: searchFields ?? {},
+  });
 
   let params: [string, string][];
   let extraHeaders: Record<string, string>;
@@ -35,8 +54,7 @@ export const submitSearch = async (
       [formId, formId],
       ...Object.entries(fields),
     ];
-    if (sectorId && sectorField) params.push([sectorField, sectorId]);
-    if (districtId) params.push(['formBuscador:buDistrito', districtId]);
+    appendSearchOverrides(params, sectorField, sectorId, districtId, searchFields);
     params.push(['javax.faces.ViewState', page.viewState]);
     extraHeaders = { 'Faces-Request': 'partial/ajax', 'X-Requested-With': 'XMLHttpRequest' };
   } else {
@@ -44,8 +62,7 @@ export const submitSearch = async (
       [formId, formId],
       ...Object.entries(fields),
     ];
-    if (sectorId && sectorField) params.push([sectorField, sectorId]);
-    if (districtId) params.push(['formBuscador:buDistrito', districtId]);
+    appendSearchOverrides(params, sectorField, sectorId, districtId, searchFields);
     params.push([buttonId, buttonValue], ['javax.faces.ViewState', page.viewState]);
     extraHeaders = {};
   }

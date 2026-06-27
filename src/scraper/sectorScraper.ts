@@ -183,7 +183,7 @@ export const scrapeSector = async (
   // drop the already-scraped pages. Only the completed=true flag is meaningful:
   // it lets parallel-districts skip a finished district on --resume.
   const { completed } = opts.resume
-    ? loadCheckpoint(site, sectorId, districtId)
+    ? loadCheckpoint(site, sectorId, districtId, opts.checkpointId)
     : { completed: false };
 
   if (completed) return { count: 0, docs: [] };
@@ -211,7 +211,7 @@ export const scrapeSector = async (
   if (config.search) {
     display.phaseStep('Submitting search');
     page = await withRetry(
-      () => submitSearch(session, config.startUrl, page, config, sectorId, districtId),
+      () => submitSearch(session, config.startUrl, page, config, sectorId, districtId, opts.searchFields),
       config.timing.retryWaitMs,
       `search-sector-${sectorId}${districtId ? `-d${districtId}` : ''}`,
       metrics,
@@ -413,7 +413,7 @@ export const scrapeSector = async (
     pageIndex++;
   }
 
-  if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true, districtId);
+  if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true, districtId, opts.checkpointId);
   logger.info('Sector done', { sector: `${sectorId}=${sectorName}`, totalScraped, elapsed: elapsed() });
   return { count: totalScraped, docs: collected };
 };

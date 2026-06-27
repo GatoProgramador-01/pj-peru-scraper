@@ -19,11 +19,24 @@ El desafio pide extraer documentos, navegar paginas, descargar PDFs y manejar ra
 | OEFA — sitio alternativo | Validado (1,724 docs, 5 sectores, 0 HTTP 429) | `output/mineria/`, `output/hidrocarburos/`, etc. |
 | PJ Peru — sitio principal | Validado con VPN Peru (100 docs, 10 paginas, 100 PDFs ok) | `output/pjperu/pj-peru-100.jsonl` |
 
+## Estado Actual Para Revision
+
+Este repositorio esta preparado para evaluacion humana como scraper HTTP de produccion controlada:
+
+- El sitio principal PJ Peru requiere VPN a Peru antes de cualquier corrida real.
+- No se usa automatizacion de navegador; todo el flujo usa requests HTTP y parsing HTML.
+- Las corridas PJ Peru escriben en carpetas con timestamp bajo `output/runs/`.
+- No usar `--fresh-output` para PJ Peru: los runners nuevos evitan borrar artefactos previos.
+- No hace falta descargar todo el portal para la entrega; el desafio pide demostrar que el scraper puede hacerlo si se deja corriendo.
+- Guia corta de evaluacion: `docs/interview-deliverable.md`.
+- Plan de prueba desde clone limpio: `docs/human-test-plan.md`.
+
 ## Quick Start
 
 ```bash
 npm install
 npm run build
+npm run verify:local
 ```
 
 Corrida controlada OEFA (100 docs + PDFs):
@@ -64,6 +77,10 @@ npm run simulate:429
 | `npm run scrape:oefa:parallel:dry` | Dry-run paralelo para validar sin escribir datos |
 | `npm run simulate:429` | Prueba local de backoff 429, sin depender del servidor real |
 | `npm run probe:oefa:429` | Probe agresivo contra OEFA real para observar si emite 429 |
+| `npm run verify:local` | Build + simulacion 429, sin VPN ni red externa |
+| `npm run scrape:pjperu:districts:dry` | Smoke test PJ Peru Superior por distritos, requiere VPN |
+| `npm run scrape:pjperu:districts:test` | Prueba acotada con PDFs por distritos, requiere VPN |
+| `npm run scrape:pjperu:suprema:years:test` | Prueba acotada de Corte Suprema por anios, requiere VPN |
 
 ## Arquitectura
 
@@ -101,7 +118,7 @@ Modulos clave:
 
 | Modulo | Responsabilidad |
 | --- | --- |
-| `src/cli.ts` | Flags, `--fresh-output`, arranque |
+| `src/cli.ts` | Flags, validacion de argumentos y arranque |
 | `src/config.ts` | Configuracion por sitio: URL, selectores, columnas, tiempos, `rowParser` |
 | `src/session/*` | Axios, cookies, deteccion de rate limit, retry/backoff |
 | `src/jsf/*` | Formularios, paginacion PrimeFaces y RichFaces, respuestas parciales JSF |
@@ -255,7 +272,7 @@ flowchart LR
 
 ## Evidencia Local Observada
 
-Resultados reales de corridas en el workspace. Para entrega formal, regenerar con `--fresh-output`.
+Resultados reales de corridas en el workspace. Para entrega formal, usar una carpeta nueva de salida o los runners con timestamp; no usar `--fresh-output` en PJ Peru.
 
 ### OEFA — Sitio alternativo (PrimeFaces/JSF, sin VPN)
 
@@ -322,7 +339,7 @@ Notas generales:
 | `--pdfs` | Activa descarga de PDFs |
 | `--pdf-dir <dir>` | Directorio de PDFs |
 | `--pdf-concurrency 20` | Maximo de descargas PDF concurrentes por pagina |
-| `--fresh-output` | Limpia JSONL y `failed-pdfs.json` del destino antes de correr |
+| `--fresh-output` | Opcion legacy para corridas controladas. Evitar en PJ Peru; preferir carpetas timestamped. |
 | `--resume` | Retoma desde checkpoint por sitio/sector/distrito |
 | `--dry-run` | Recorre y loguea sin escribir salida |
 | `--proxy <url>` | Proxy HTTP/HTTPS para PJ Peru o redes restringidas |
@@ -340,7 +357,7 @@ Con `--resume`, el scraper:
 5. Continua desde ahi.
 6. Marca `completed: true` solo al terminar el sector.
 
-Para auditoria limpia, usar `--fresh-output`. Para continuidad operacional, usar `--resume`.
+Para auditoria limpia en PJ Peru, usar una carpeta de salida nueva o los runners timestamped. Para continuidad operacional, usar `--resume`.
 
 ## Paralelizacion Por Distrito — Por Que Y Como
 
@@ -409,8 +426,7 @@ for DISTRICT in 5 7 9 8 1 12; do
     --district $DISTRICT \
     --pdfs --pdf-dir output/pjperu-districts/pdfs \
     --pdf-concurrency 15 \
-    --out output/pjperu-districts/district-$(printf '%02d' $DISTRICT)-retry.jsonl \
-    --fresh-output
+    --out output/pjperu-districts/district-$(printf '%02d' $DISTRICT)-retry.jsonl
 done
 ```
 
@@ -595,7 +611,7 @@ Con esos valores podemos implementar `src/jsf/fichaFetcher.ts` en ~1 sesion y ag
    for D in 5 7 9 8 1 12; do
      node dist/cli.js --site pj-peru --sector 2 --district $D \
        --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 15 \
-       --out output/pjperu-districts/district-${D}-retry.jsonl --fresh-output
+       --out output/pjperu-districts/district-${D}-retry.jsonl
    done
    ```
 3. **Calibrar limite de tests a 500 docs** (50 paginas × 10 docs) en lugar de 50 — mas representativo de la carga real del portal (7,168 paginas por distrito).
@@ -612,11 +628,11 @@ node dist/cli.js --site pj-peru --dry-run --limit 5
 for D in 5 7 9 8 1 12; do
   node dist/cli.js --site pj-peru --sector 2 --district $D \
     --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 15 \
-    --out output/pjperu-districts/district-${D}-retry.jsonl --fresh-output
+    --out output/pjperu-districts/district-${D}-retry.jsonl
 done
 
 # Test de 500 docs (calibracion de carga real)
-node scripts/parallel-districts.mjs --limit 500 --concurrency 12 --pdf-concurrency 15 --fresh-output
+node scripts/parallel-districts.mjs --limit 500 --concurrency 12 --pdf-concurrency 15
 ```
 
 ## Checklist De Entrega
