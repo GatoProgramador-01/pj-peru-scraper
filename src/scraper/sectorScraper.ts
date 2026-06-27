@@ -256,6 +256,16 @@ export const scrapeSector = async (
 
     const toWrite = limit !== null ? docs.slice(0, limit - totalScraped) : docs;
 
+    // Prefetch next page concurrently with PDF downloads — saves ~0.5–2s per page.
+    const prefetchedNextPage = page.hasNextPage
+      ? withRetry(
+          () => fetchNextPage(session, config.startUrl, page, pageIndex + 1, ROWS_PER_PAGE),
+          config.timing.retryWaitMs,
+          `page-${pageIndex + 1}-sector-${sectorId}`,
+          metrics,
+        )
+      : null;
+
     const pagePdfStartedAt = Date.now();
     const pagePdfStats = pdfDir && !dryRun
       ? await downloadPagePdfs(
@@ -341,14 +351,7 @@ export const scrapeSector = async (
       break;
     }
 
-    await jitter(...config.timing.pageDelayMs);
-
-    const { $: next$, newViewState } = await withRetry(
-      () => fetchNextPage(session, config.startUrl, page, pageIndex + 1, ROWS_PER_PAGE),
-      config.timing.retryWaitMs,
-      `page-${pageIndex + 1}-sector-${sectorId}`,
-      metrics,
-    );
+    const { $: next$, newViewState } = await prefetchedNextPage!;
     const nextPag = parsePaginatorText(next$);
     page = {
       ...page,
