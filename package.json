@@ -32,7 +32,7 @@
     "scrape:pjperu:suprema:years:test": "npm run build && node scripts/parallel-suprema-years.mjs --years 2026,2025,2024,2023 --limit 500 --concurrency 4"
   },
   "dependencies": {
-    "axios": "1.7.2",
+    "axios": "^1.18.1",
     "cheerio": "1.0.0-rc.12",
     "winston": "3.13.0",
     "yargs": "17.7.2"
