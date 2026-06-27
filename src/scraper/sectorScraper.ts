@@ -209,6 +209,11 @@ export const scrapeSector = async (
       'Search complete',
       `${page.totalRecords ?? '?'} records · ${page.totalPages ?? '?'} pages · ${elapsed()}`,
     );
+    // Portals like pj-peru (RichFaces) don't render paginator buttons on initial GET —
+    // if hasNextPage is false but we got a full page and totalPages is unknown, assume more.
+    if (!page.hasNextPage && page.totalPages === null && page.rows.length >= ROWS_PER_PAGE) {
+      page = { ...page, hasNextPage: true };
+    }
     logger.info('Search submitted - first page received', {
       sector: `${sectorId}=${sectorName}`,
       rowsFound: page.rows.length,
@@ -235,11 +240,12 @@ export const scrapeSector = async (
       metrics,
     );
     const pag = parsePaginatorText(next$);
+    const resumeRows = parseRows(next$, config, config.baseUrl);
     page = {
       ...page,
       viewState: newViewState ?? page.viewState,
-      rows: parseRows(next$, config, config.baseUrl),
-      hasNextPage: pag ? pageHasNext(next$) : page.totalPages != null ? i + 2 < page.totalPages : pageHasNext(next$),
+      rows: resumeRows,
+      hasNextPage: pag ? pageHasNext(next$) : page.totalPages != null ? i + 2 < page.totalPages : pageHasNext(next$) || resumeRows.length >= ROWS_PER_PAGE,
       currentPage: pag?.currentPage ?? i + 2,
       totalPages: pag?.totalPages ?? page.totalPages,
       totalRecords: pag?.totalRecords ?? page.totalRecords,
@@ -350,11 +356,12 @@ export const scrapeSector = async (
       metrics,
     );
     const nextPag = parsePaginatorText(next$);
+    const nextRows = parseRows(next$, config, config.baseUrl);
     page = {
       ...page,
       viewState: newViewState ?? page.viewState,
-      rows: parseRows(next$, config, config.baseUrl),
-      hasNextPage: nextPag ? pageHasNext(next$) : page.totalPages != null ? pageIndex + 2 < page.totalPages : pageHasNext(next$),
+      rows: nextRows,
+      hasNextPage: nextPag ? pageHasNext(next$) : page.totalPages != null ? pageIndex + 2 < page.totalPages : pageHasNext(next$) || nextRows.length >= ROWS_PER_PAGE,
       currentPage: nextPag?.currentPage ?? pageIndex + 2,
       totalPages: nextPag?.totalPages ?? page.totalPages,
       totalRecords: nextPag?.totalRecords ?? page.totalRecords,
