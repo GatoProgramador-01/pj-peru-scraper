@@ -66,13 +66,14 @@ const args   = process.argv.slice(2);
 const get    = f => { const i = args.indexOf(f); return i !== -1 ? args[i + 1] : null; };
 const has    = f => args.includes(f);
 
-const pdfs       = has('--pdfs');
-const pdfDir     = get('--pdf-dir')         ?? 'output/pjperu-districts/pdfs';
-const pdfConc    = get('--pdf-concurrency') ?? '10';
-const limit      = get('--limit');
-const dryRun     = has('--dry-run');
-const resume     = has('--resume');
-const maxWorkers = parseInt(get('--concurrency') ?? '20', 10);
+const pdfs        = has('--pdfs');
+const pdfDir      = get('--pdf-dir')         ?? 'output/pjperu-districts/pdfs';
+const pdfConc     = get('--pdf-concurrency') ?? '10';
+const limit       = get('--limit');
+const dryRun      = has('--dry-run');
+const resume      = has('--resume');
+const freshOutput = has('--fresh-output');
+const maxWorkers  = parseInt(get('--concurrency') ?? '20', 10);
 
 const outDir = 'output/pjperu-districts';
 mkdirSync(outDir, { recursive: true });
@@ -95,10 +96,11 @@ const spawnDistrict = (id, name) => new Promise(resolve => {
     'dist/cli.js', '--site', 'pj-peru', '--sector', '2', '--district', id,
     '--out', outFile, '--pdf-concurrency', pdfConc,
   ];
-  if (pdfs)   { cliArgs.push('--pdfs', '--pdf-dir', pdfDir); }
-  if (limit)  { cliArgs.push('--limit', limit); }
-  if (dryRun) { cliArgs.push('--dry-run'); }
-  if (resume) { cliArgs.push('--resume'); }
+  if (pdfs)        { cliArgs.push('--pdfs', '--pdf-dir', pdfDir); }
+  if (limit)       { cliArgs.push('--limit', limit); }
+  if (dryRun)      { cliArgs.push('--dry-run'); }
+  if (resume)      { cliArgs.push('--resume'); }
+  if (freshOutput) { cliArgs.push('--fresh-output'); }
 
   const pad = `[${(id + '=' + name).padEnd(20)}]`;
   console.log(`  🐈 START ${pad} → ${outFile}`);
@@ -144,6 +146,7 @@ if (!dryRun && ok.length > 0) {
   const mergedPath = `${outDir}/all-districts.jsonl`;
   console.log(`  🐾 Merging → ${mergedPath}`);
   const writer = createWriteStream(mergedPath, { flags: 'w' });
+  writer.setMaxListeners(0);
   for (const { outFile } of ok) {
     try { await pipeline(createReadStream(outFile), writer, { end: false }); }
     catch { /* district had zero results */ }

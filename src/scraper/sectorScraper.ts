@@ -351,6 +351,7 @@ export const scrapeSector = async (
       break;
     }
 
+    if (config.timing.pageDelayMs[1] > 0) await jitter(...config.timing.pageDelayMs);
     const { $: next$, newViewState } = await withRetry(
       () => fetchNextPage(session, config.startUrl, page, pageIndex + 1, ROWS_PER_PAGE, useRichFaces),
       config.timing.retryWaitMs,
