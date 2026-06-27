@@ -263,12 +263,65 @@ export const scrapeSector = async (
     display.phaseOk(`Resumed at page ${pageIndex + 1}`, elapsed());
   }
 
+  const CONSECUTIVE_EMPTY_ABORT = 3;
+  let consecutiveEmptyPages = 0;
+
   // Main pagination loop
   while (true) {
     if (limit !== null && totalScraped >= limit) { logger.info('Limit reached', { limit }); break; }
 
     const docs = page.rows.map(rowToDocument(site, pageIndex, config.columns, sectorId, sectorName));
-    if (docs.length === 0) { logger.info('Empty page - end of results', { sectorId, pageIndex }); break; }
+    if (docs.length === 0) {
+      const isSoftBlock = page.hasNextPage && pageIndex > 0;
+      if (!isSoftBlock) {
+        logger.info('Empty page - end of results', { sectorId, pageIndex });
+        break;
+      }
+      consecutiveEmptyPages++;
+      const blockType = consecutiveEmptyPages >= CONSECUTIVE_EMPTY_ABORT ? 'soft_block_abort' : 'soft_block_warning';
+      logger.warn(`${blockType} [${consecutiveEmptyPages}/${CONSECUTIVE_EMPTY_ABORT}]: 0 rows on page with hasNextPage=true`, { sectorId, pageIndex, totalScraped });
+      pageEvents.push({
+        type: blockType,
+        site, sectorId, sectorName, pageIndex,
+        pageLabel: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : '/?'}`,
+        docsThisPage: 0, totalDocs: metrics.totalDocumentsCollected, targetDocs: runLimit,
+        totalRecords: page.totalRecords,
+        pdfDownloadedThisPage: 0, pdfFailedThisPage: 0, pdfMissingThisPage: 0,
+        pdfConfidentialThisPage: 0, pdfSkippedExistingThisPage: 0,
+        elapsed: elapsed(), createdAt: new Date().toISOString(),
+      });
+      if (consecutiveEmptyPages >= CONSECUTIVE_EMPTY_ABORT) {
+        if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, false, districtId);
+        break;
+      }
+      // Fall through — fetch next page and try again
+    } else {
+      consecutiveEmptyPages = 0;
+    }
+    if (docs.length === 0) {
+      // Still in soft-block retry window — skip PDF/write, advance to next page
+      if (!page.hasNextPage) break;
+      if (config.timing.pageDelayMs[1] > 0) await jitter(...config.timing.pageDelayMs);
+      const { $: next$, newViewState } = await withRetry(
+        () => fetchNextPage(session, config.startUrl, page, pageIndex + 1, ROWS_PER_PAGE, useRichFaces),
+        config.timing.retryWaitMs,
+        `page-${pageIndex + 1}-sector-${sectorId}`,
+        metrics,
+      );
+      const nextPag = parsePaginatorText(next$);
+      const nextRows = parseRows(next$, config, config.baseUrl);
+      page = {
+        ...page,
+        viewState: newViewState ?? page.viewState,
+        rows: nextRows,
+        hasNextPage: nextPag ? pageHasNext(next$) : page.totalPages != null ? pageIndex + 2 < page.totalPages : pageHasNext(next$) || nextRows.length >= ROWS_PER_PAGE,
+        currentPage: nextPag?.currentPage ?? pageIndex + 2,
+        totalPages: nextPag?.totalPages ?? page.totalPages,
+        totalRecords: nextPag?.totalRecords ?? page.totalRecords,
+      };
+      pageIndex++;
+      continue;
+    }
 
     const toWrite = limit !== null ? docs.slice(0, limit - totalScraped) : docs;
 

@@ -280,9 +280,11 @@ Con `scrape:oefa:parallel`: todos los sectores en paralelo, tiempo total = secto
 | Test distritos v2 — 20 workers, pdf-concurrency 5 | 1,200 | 50† | 10/34 (29%) | 0 | ~5m |
 | Test distritos v3 — 12 workers, pdf-concurrency 5 | 1,500 | 50† | 4/34 (12%) | 0 | ~8m |
 | Validacion PDF aislada — Lima (d18), 20 docs, fresh dir | 20 | 20 | 0 | 0 | ~1m33s |
+| **Produccion v4 — 12 workers, pdf-conc 15 (en curso 2026-06-27)** | **54,480+** | **4,105+** | **6/34 (18%)‡** | **0** | **~2h** |
 
 > *Root cause: 400 conexiones simultaneas a `/ServletDescarga` (20 workers × 20 pdf-conc) → saturacion. Fix: pdf-concurrency 5 por worker.
 > †PDFs contados como `skippedExisting` porque el directorio compartido ya tenia los archivos de corridas anteriores. Test aislado de Lima confirma 20/20 descargados, 45 PDFs/min, latencia avg 2055ms, 100% headers `%PDF-` validos.
+> ‡6 distritos (AYACUCHO=80 docs, CALLAO=80, LIMA\_NORTE=90, CANETE=170, AMAZONAS=210, HUANUCO=200) terminaron temprano por saturacion de sesion JSF en el primer batch de 12 workers simultaneos. Son reintentables individualmente (ver seccion "Retry De Distritos Fallidos").
 
 **PDF integrity check (10 muestras de `output/pjperu-districts/pdfs/`):** 10/10 headers `%PDF-` validos, 282–1005 KB por archivo, 0 corruptos.
 
@@ -396,6 +398,50 @@ output/pjperu-districts/
   pdfs/                        # PDFs descargados
 ```
 
+### Retry De Distritos Fallidos
+
+Los distritos que terminaron con pocos registros (AYACUCHO, CALLAO, LIMA\_NORTE, CANETE, AMAZONAS, HUANUCO) fallaron por saturacion del pool JSF en el primer batch. Se pueden reintentar individualmente con `--concurrency 1` para que no compitan con ningun otro worker:
+
+```bash
+# Un distrito a la vez — sin competencia, sin saturacion
+for DISTRICT in 5 7 9 8 1 12; do
+  node dist/cli.js --site pj-peru --sector 2 \
+    --district $DISTRICT \
+    --pdfs --pdf-dir output/pjperu-districts/pdfs \
+    --pdf-concurrency 15 \
+    --out output/pjperu-districts/district-$(printf '%02d' $DISTRICT)-retry.jsonl \
+    --fresh-output
+done
+```
+
+Por que `--concurrency 1` funciona: el fallo original fue que 12 procesos arrancan juntos y saturan el ViewState pool. Un proceso solo nunca compite con nadie — puede extraer la pagina completa del distrito sin recibir respuestas AJAX vacias.
+
+### Optimizacion PDF: Skip Existing
+
+El downloader siempre revisa si el PDF ya existe en disco antes de hacer la peticion HTTP. Si existe, lo marca como `skippedExisting` y sigue. Esto significa que:
+
+- **Retries son gratuitos**: reintentar un distrito no re-descarga PDFs que ya estan.
+- **Rondas sucesivas son fast**: la segunda corrida de produccion solo descarga los PDFs que no tiene.
+- **PDFs y metadatos son independientes**: se puede correr sin `--pdfs` para extraer JSONL rapido, y luego correr solo PDFs en una segunda fase.
+
+La extraccion de metadatos (JSONL) es significativamente mas rapida que la descarga de PDFs porque:
+
+```
+JSONL: 1 request AJAX por pagina × 10 docs = ~0.5s/doc
+PDF:   1 request GET por doc × ~2s latencia = ~2s/doc
+```
+
+Estrategia optima para dataset completo:
+
+```bash
+# Fase 1 — extraer todos los metadatos primero (~2h, sin PDFs)
+node scripts/parallel-districts.mjs --concurrency 12
+
+# Fase 2 — descargar PDFs con alta concurrencia (~3h, sin re-navegar el portal)
+# scripts/pdf-only.mjs --input output/pjperu-districts/all-districts.jsonl --concurrency 50
+# (pendiente implementar)
+```
+
 ## Estrategia De Extraccion Masiva PJ Peru
 
 El dataset completo (~666k docs) no requiere descargarse de una sola vez. La estrategia optima:
@@ -451,44 +497,85 @@ node dist/cli.js --site pj-peru --limit 10 --dry-run
 node dist/cli.js --site pj-peru --limit 100 --pdfs --pdf-dir output/pjperu/pdfs --out output/pjperu/pj-peru-documents.jsonl
 ```
 
-## Agenda Proxima Sesion — Maximizar PDFs
+## Ver Ficha — Campos Adicionales Del Portal
 
-**Estado al cierre de sesion 2026-06-27:**
+El modal "Ver Ficha" (boton en la tabla de resultados) expone campos que no estan en las columnas visibles. Captura real de la interfaz (2026-06-27):
 
-- Output limpio: `output/pjperu-districts/` (3,040 docs de prueba, 50 PDFs reales)
-- Checkpoints activos: 34 districts + Suprema + Superior
-- Ultimo commit: `4fa6502` — inter-page delay + --fresh-output passthrough
-- **VPN requerida para retomar** — sin VPN el portal retorna 0 resultados en busqueda
+| Seccion | Campo | Ejemplo | Estado |
+| --- | --- | --- | --- |
+| DATOS DE LA RESOLUCION | `fechaResolucion` | 26/06/2026 | Pendiente implementar |
+| DATOS DE LA RESOLUCION | `tipoResolucion` | Sentencia de Vista | Pendiente implementar |
+| DATOS DE LA RESOLUCION | `fallo` | Confirmada | Pendiente implementar |
+| DATOS DE LA RESOLUCION | `jueces` | [array de nombres] | Pendiente implementar |
+| DATOS DE LA RESOLUCION | `ponente` | *** (confidencial) | No expuesto por portal |
+| DATOS DE LA RESOLUCION | `dirimente` | *** (confidencial) | No expuesto por portal |
+| DATOS DE LA RESOLUCION | `sumilla` | Texto largo | **Ya extraido del panel** |
+| DATOS DEL PROCESO | `especialidad` | Familia Civil | Pendiente implementar |
+| DATOS DEL PROCESO | `organoJurisdiccional` | 1° SALA MIXTA - Sede Sicuani | Pendiente implementar |
+| DATOS DEL PROCESO | `pretensionDelito` | DIVORCIO POR CAUSAL | Pendiente implementar |
+| DATOS DEL PROCESO | `proceso` | Conocimiento | Pendiente implementar |
+| DATOS DEL PROCESO | `palabrasClave` | CONFIRMARON, CONFIRMA... | **Ya extraido del panel** |
+| DATOS DE PROCEDENCIA | `distritoJudicialProcedencia` | Cusco | Pendiente implementar |
+| DATOS DE PROCEDENCIA | `expedienteProcedencia` | 235-2025-0 | Pendiente implementar |
+| DATOS DE PROCEDENCIA | `fechaResolucionProcedencia` | 13/01/2026 | Pendiente implementar |
+| DATOS DE PROCEDENCIA | `falloProcedencia` | Improcedente | Pendiente implementar |
 
-**Tasa de exito actual por concurrencia:**
+`ponente` y `dirimente` aparecen como `***` — el portal no los expone, no es un bug del scraper.
+
+Para implementar la extraccion de ficha: cada fila devuelve un link o boton que dispara un POST AJAX JSF. El scraper necesita:
+1. Capturar el ID del componente que dispara la ficha (via DevTools Network al hacer click en "Ver Ficha").
+2. Implementar `src/jsf/fichaFetcher.ts` que hace el POST con `javax.faces.source` del componente y el ViewState activo.
+3. Parsear el HTML del panel de respuesta (estructura de tabla `<td>Label</td><td>Valor</td>`).
+
+Esto requiere captura del Network request real — ver seccion "Checklist De Entrega" para el flujo.
+
+## Agenda Proxima Sesion
+
+**Estado al 2026-06-27 (produccion v4 corriendo):**
+
+- 54,480+ docs extraidos | 4,105+ PDFs descargados | run activo con 12 workers
+- 18 de 34 distritos completados; 6 fallidos por saturacion JSF primer batch
+- El portal muestra 7,168 paginas por distrito → ~71,680 docs/distrito. Limite de tests ajustado a 500 docs para representar mejor la carga real.
+- VPN Peru activa durante el run actual
+
+**Tasa de exito por concurrencia (historico):**
 
 | Workers | Exitosos | Tasa | Estado |
 | ---: | ---: | --- | --- |
-| 20 | 24/34 | 71% | demasiado alto |
-| 12 | 30/34 | 88% | mejor, pendiente validar con inter-page delay |
-| 12 + delay 300-700ms | pendiente | ? | primera prueba del dia |
+| 20 (sin jitter) | 24/34 | 71% | descartado |
+| 12 (con jitter) | 28/34 | 82% | bueno, 6 fallidos por saturacion primer batch |
+| 12 + delay 300-700ms | validando en v4 | en curso | objetivo 34/34 en retry individual |
 
-**Objetivo del dia — en orden:**
+**Proximos pasos (en orden):**
 
-1. **Reconectar VPN Peru** y verificar con `node dist/cli.js --site pj-peru --dry-run --limit 5`.
-2. **Test de 10 min con inter-page delay**: `node scripts/parallel-districts.mjs --limit 50 --concurrency 12 --pdf-concurrency 5 --fresh-output` — objetivo 34/34.
-3. Si hay fallas, bajar a `--concurrency 8` y medir (deberia caber en 10 min).
-4. **Lanzar produccion en background** (3h): `npm run scrape:pjperu:districts` (concurrency optima, con PDFs).
-5. **Investigar limite de PDF concurrency**: con 12 workers y la sesion en calma, probar subir `--pdf-concurrency` de 5 a 8 y medir si hay errores. El objetivo es maximizar PDFs/min sin saturar `/ServletDescarga`.
-6. **Implementar script pdf-only** (`scripts/pdf-only.mjs`): leer JSONL existente y descargar PDFs sin re-navegar el portal. Permite reintentar solo PDFs fallidos con concurrencia alta sin tocar la sesion JSF.
+1. **Esperar fin de v4** y contar distritos completados con >4,000 docs.
+2. **Retry 6 distritos fallidos** uno por uno con `--concurrency 1`:
+   ```bash
+   for D in 5 7 9 8 1 12; do
+     node dist/cli.js --site pj-peru --sector 2 --district $D \
+       --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 15 \
+       --out output/pjperu-districts/district-${D}-retry.jsonl --fresh-output
+   done
+   ```
+3. **Calibrar limite de tests a 500 docs** (50 paginas × 10 docs) en lugar de 50 — mas representativo de la carga real del portal (7,168 paginas por distrito).
+4. **Implementar `fichaFetcher`** — capturar con DevTools el POST AJAX del boton "Ver Ficha" para agregar los 10 campos nuevos al JSONL.
+5. **Implementar `pdf-only.mjs`** — descarga de PDFs desde JSONL existente sin re-navegar JSF. Desbloquea concurrencia de 50+ sin tocar el pool de sesiones.
+6. **Fusionar** `output/pjperu-districts/district-*.jsonl` en `all-districts.jsonl` y cargar a MongoDB.
 
-**Por que solo 50 PDFs hasta ahora:** todos los tests usaron `--limit 50` por worker y el directorio compartido de PDFs marcaba los archivos previos como `skippedExisting`. La validacion aislada (Lima d18, directorio fresco) confirmo 20/20 PDFs descargados a 45 PDFs/min. El mecanismo es correcto; la produccion descargara miles.
-
-**Comando de inicio manana (con VPN activa):**
+**Comando de inicio proxima sesion (con VPN activa):**
 ```bash
-# 1. Verificar VPN
+# Verificar VPN y estado del portal
 node dist/cli.js --site pj-peru --dry-run --limit 5
 
-# 2. Test con delay (10 min)
-node scripts/parallel-districts.mjs --limit 50 --concurrency 12 --pdf-concurrency 5 --fresh-output 2>&1 | grep -E "(DONE|COMPLETE|FALLIDOS)"
+# Retry distritos fallidos (uno por uno, sin competencia)
+for D in 5 7 9 8 1 12; do
+  node dist/cli.js --site pj-peru --sector 2 --district $D \
+    --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 15 \
+    --out output/pjperu-districts/district-${D}-retry.jsonl --fresh-output
+done
 
-# 3. Si 34/34: produccion (~3h, no bloquea terminal)
-Start-Process node -ArgumentList "scripts/parallel-districts.mjs","--pdfs","--pdf-dir","output/pjperu-districts/pdfs","--pdf-concurrency","5","--concurrency","12" -WindowStyle Normal
+# Test de 500 docs (calibracion de carga real)
+node scripts/parallel-districts.mjs --limit 500 --concurrency 12 --pdf-concurrency 15 --fresh-output
 ```
 
 ## Checklist De Entrega
@@ -501,6 +588,46 @@ Start-Process node -ArgumentList "scripts/parallel-districts.mjs","--pdfs","--pd
 6. Revisar `run-summary.json` y `failed-pdfs.json`.
 7. Confirmar que `confidential` no aparece como `failedDownload`.
 8. Compartir rama `feat/pj-peru-full-extraction` o `main` con artefactos documentados.
+
+## Catalogo De Errores Y Comportamientos Anomalos
+
+Estos son los errores reales observados en produccion. Cada uno tiene una causa especifica y una respuesta conocida.
+
+| Error / Sintoma | Causa raiz | Respuesta del scraper | Accion correctiva |
+| --- | --- | --- | --- |
+| `Partial AJAX response empty` | Saturacion del pool JSF: demasiados workers arrancando al mismo tiempo, el servidor retorna respuestas vacias en lugar de resultados | Logger lo registra; el worker aborta el distrito actual | Reintentar ese distrito con `--concurrency 1`, sin competencia de otros workers |
+| HTTP 500 en POST de busqueda | ViewState expirado o sesion invalida: la sesion del worker murio y el POST llega sin ViewState valido | `withRetry` reintenta 3 veces con backoff; si persiste, el distrito falla con `exit 1` | Reiniciar el worker; el checkpoint permite continuar desde la ultima pagina |
+| 0 resultados despues de busqueda exitosa | "Soft block" silencioso: el servidor acepta el request pero retorna una pagina valida con 0 filas. No hay error HTTP | Detectado por `consecutiveEmptyPages >= EMPTY_PAGES_ABORT` (implementado); worker aborta y guarda checkpoint | Esperar y reintentar; si persiste, rotar VPN o reducir concurrencia |
+| `docsThisPage = 0` por varias paginas seguidas | Variante del soft block: las primeras N paginas regresan con datos, luego el servidor empieza a servir paginas vacias | Detectado por contador `consecutiveEmptyPages`; abort automatico | Checkpoint disponible; `--resume` retoma desde la ultima pagina con datos |
+| PDF no descargado — `failedDownload` | `/ServletDescarga?uuid=` retorna non-PDF (404, redirect, HTML de error) despues de 3 reintentos | Registrado en `failed-pdfs.json` con URL y status | Revisar si el UUID sigue siendo valido (pueden expirar); reintentar con script pdf-only |
+| PDF como `missingPdfUrl` | El mapper no encontro URL en la fila — puede ser un documento sin PDF real | Registrado en `failed-pdfs.json` | Revisar el HTML raw de la fila; si el selector no captura la URL, actualizar `rowParser.ts` |
+| `totalPages = ?` en terminal | `parsePaginatorText` no encontro `maxValue` en los scripts de la pagina — ocurre en respuestas AJAX parciales que no incluyen la config del DataScroller | `totalPages` se computa desde `totalRecords / 10` cuando es posible; de lo contrario se muestra `?` | Normal para paginas AJAX intermedias; solo la pagina inicial tiene `maxValue` |
+| `tipoRecurso / sumilla / palabrasClave = null` | Selector `div.rf-p[id^="formBuscador:repeat:"]` no encontro el panel — puede ser una respuesta parcial incompleta | Los campos quedan en null; el documento igual se guarda | Verificar que la respuesta AJAX incluya el HTML completo del repeat; puede ser saturacion o timeout del servidor |
+| Checkpoint no avanza (pagesSinceCheckpoint = 0) | El scraper guarda checkpoint cada 5 paginas; si el distrito termina en menos de 5 paginas, el checkpoint puede no haberse guardado | El checkpoint se guarda al terminar (exit limpio) | Si el proceso murio sin checkpoint, el distrito corre desde cero; el skip de PDFs existentes evita re-descargas |
+
+### Soft Block — Deteccion Y Respuesta Automatica
+
+El portal PJ Peru usa saturacion silenciosa en lugar de HTTP 429. Cuando un worker hace demasiadas requests, el servidor empieza a servir paginas con 0 documentos en vez de retornar un error explicito. Sin deteccion, el scraper navega decenas de paginas vacias y nunca termina.
+
+```mermaid
+flowchart TD
+    Page["Procesar pagina N"] --> Count["docsThisPage = 0?"]
+    Count -->|Si| Inc["consecutiveEmptyPages++"]
+    Count -->|No| Reset["consecutiveEmptyPages = 0"]
+    Inc --> Threshold{">= 3 vacias\nconsecutivas?"}
+    Threshold -->|Si| Abort["Abort: guardar checkpoint\nloggear soft_block en page-events"]
+    Threshold -->|No| Next["Siguiente pagina"]
+    Reset --> Next
+    Abort --> Retry["Reintentar con --resume\no --concurrency 1"]
+```
+
+Constante configurable en `src/scraper/sectorScraper.ts`:
+
+```typescript
+const CONSECUTIVE_EMPTY_ABORT = 3; // abortar si 3 paginas seguidas devuelven 0 docs
+```
+
+El evento de abort se registra en `page-events.jsonl` con `type: "soft_block_abort"` para auditoria.
 
 ## Guia Para Un Futuro Colega
 
