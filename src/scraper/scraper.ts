@@ -10,6 +10,7 @@ import { makeSession } from '../session/session.js';
 import { sleep } from '../utils/delay.js';
 import { discoverSectors } from './sectorDiscovery.js';
 import { scrapeSector } from './sectorScraper.js';
+import * as display from '../display/terminal.js';
 
 const formatDuration = (ms: number): string => {
   const sec = Math.round(ms / 1000);
@@ -49,6 +50,11 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
 
   logger.info('Sectors queued', { count: sectorsToRun.length, sectors: sectorsToRun.map(([id, name]) => `${id}=${name}`).join(', ') });
 
+  const sectorLabel = opts.sectorId != null
+    ? sectorsToRun[0]?.[1] ? `${opts.sectorId}=${sectorsToRun[0][1]}` : opts.sectorId
+    : null;
+  display.runBanner(config.name, sectorLabel, opts.outputPath, opts.limit);
+
   const out = opts.dryRun ? null : fs.createWriteStream(opts.outputPath, { flags: 'a' });
   const failedPdfs: PdfFailure[] = [];
   const pageEvents: PageEvent[] = [];
@@ -67,6 +73,7 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     const sectorOpts: ScrapeOptions = { ...opts, limit: sectorLimit };
 
     logger.info(`-- Sector ${i + 1}/${sectorsToRun.length}: ${sectorName ?? sectorId} --`, { sectorId, sectorName });
+    display.sectorBanner(i + 1, sectorsToRun.length, sectorId, sectorName, null);
     const session = makeSession(config.baseUrl, opts.proxy);
     const count = await scrapeSector(session, config, sectorOpts, sectorId, sectorName, out, metrics, failedPdfs, pageEvents, opts.limit);
     totalScraped += count;
@@ -147,4 +154,21 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     output: opts.outputPath,
     totalElapsed: formatDuration(Date.now() - runStart),
   });
+
+  display.runSummary(
+    [
+      ['Documents collected', metrics.totalDocumentsCollected],
+      ['PDFs downloaded', metrics.totalPdfDownloaded],
+      ['PDFs skipped (already existed)', metrics.totalSkippedExisting],
+      ['Confidential (unavailable)', metrics.totalPdfConfidential],
+      ['Failed downloads', metrics.totalPdfFailed],
+      ['HTTP 429 events', metrics.total429],
+      ['Total retries', metrics.totalRetries],
+      ['Docs / min', Math.round(metrics.totalDocumentsCollected / elapsedMin)],
+      ['PDFs / min', Math.round(totalPdfCompleted / elapsedMin)],
+      ['Avg PDF latency', `${avgPdfLatencyMs} ms`],
+      ['Duration', formatDuration(elapsedMs)],
+    ],
+    reportPaths ? `Artifacts → ${path.dirname(opts.outputPath)}/` : undefined,
+  );
 };

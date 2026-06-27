@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { logger } from '../logger.js';
 import { ROWS_PER_PAGE } from '../config/constants.js';
+import * as display from '../display/terminal.js';
 import type { ParsedRow, Session } from '../models/internalTypes.js';
 import type { PageEvent, PdfDownloadResult, PdfFailure, RunMetrics } from '../models/metrics.js';
 import { pdfFailureFromDocument } from '../models/metrics.js';
@@ -86,6 +87,7 @@ const downloadPagePdfs = async (
   pdfConcurrency: number,
   metrics: RunMetrics,
   failedPdfs: PdfFailure[],
+  onProgress?: (done: number, total: number) => void,
 ): Promise<PagePdfStats> => {
   const pageStats: PagePdfStats = {
     pdfDownloadedThisPage: 0,
@@ -124,6 +126,9 @@ const downloadPagePdfs = async (
     }
   }
 
+  const totalCandidates = directIndexes.length + jsfIndexes.length;
+  let doneCount = 0;
+
   for (let i = 0; i < directIndexes.length; i += pdfConcurrency) {
     const chunk = directIndexes.slice(i, i + pdfConcurrency);
     const results = await Promise.all(chunk.map(async index => ({
@@ -132,6 +137,7 @@ const downloadPagePdfs = async (
     })));
     for (const { index, result } of results) {
       processPdfResult(docs[index], result, metrics, failedPdfs, pageStats);
+      onProgress?.(++doneCount, totalCandidates);
     }
     if (i + pdfConcurrency < directIndexes.length) await jitter(...config.timing.pdfDelayMs);
   }
@@ -141,6 +147,7 @@ const downloadPagePdfs = async (
     const row = rows[index];
     const result = await downloadJsfActionPdf(session, config, viewState, row.pdfJsfAction!, docs[index], pdfDir);
     processPdfResult(docs[index], result, metrics, failedPdfs, pageStats);
+    onProgress?.(++doneCount, totalCandidates);
     await jitter(...config.timing.pdfDelayMs);
   }
 
@@ -178,20 +185,27 @@ export const scrapeSector = async (
     return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
   };
 
+  display.phaseStep('Bootstrap session');
   const $initial = await withRetry(
     () => fetchStartPage(session, config.startUrl),
     config.timing.retryWaitMs,
     `bootstrap-sector-${sectorId}`,
     metrics,
   );
+  display.phaseOk('Session ready', elapsed());
   let page = parsePage($initial, config, config.baseUrl);
 
   if (config.search) {
+    display.phaseStep('Submitting search');
     page = await withRetry(
       () => submitSearch(session, config.startUrl, page, config, sectorId),
       config.timing.retryWaitMs,
       `search-sector-${sectorId}`,
       metrics,
+    );
+    display.phaseOk(
+      'Search complete',
+      `${page.totalRecords ?? '?'} records · ${page.totalPages ?? '?'} pages · ${elapsed()}`,
     );
     logger.info('Search submitted - first page received', {
       sector: `${sectorId}=${sectorName}`,
@@ -208,6 +222,9 @@ export const scrapeSector = async (
   }
 
   // Fast-forward to resume page by replaying page-turn POSTs
+  if (pageIndex > 0) {
+    display.phaseStep(`Resuming from page ${pageIndex + 1}`);
+  }
   for (let i = 0; i < pageIndex; i++) {
     const { $: next$, newViewState } = await withRetry(
       () => fetchNextPage(session, config.startUrl, page, i + 1, ROWS_PER_PAGE),
@@ -226,6 +243,9 @@ export const scrapeSector = async (
       totalRecords: pag?.totalRecords ?? page.totalRecords,
     };
   }
+  if (pageIndex > 0) {
+    display.phaseOk(`Resumed at page ${pageIndex + 1}`, elapsed());
+  }
 
   // Main pagination loop
   while (true) {
@@ -238,8 +258,14 @@ export const scrapeSector = async (
 
     const pagePdfStartedAt = Date.now();
     const pagePdfStats = pdfDir && !dryRun
-      ? await downloadPagePdfs(session, config, toWrite, page.rows, page.viewState, pdfDir, pdfConcurrency, metrics, failedPdfs)
+      ? await downloadPagePdfs(
+          session, config, toWrite, page.rows, page.viewState, pdfDir, pdfConcurrency,
+          metrics, failedPdfs,
+          (done, total) => display.liveProgress('pdf', done, total),
+        )
       : { pdfDownloadedThisPage: 0, pdfFailedThisPage: 0, pdfMissingThisPage: 0, pdfConfidentialThisPage: 0, pdfSkippedExistingThisPage: 0 };
+
+    display.clearProgress();
 
     if (dryRun) {
       logger.info('[dry-run]', { sectorId, pageIndex, count: toWrite.length, sample: toWrite[0]?.caseNumber });
@@ -256,6 +282,19 @@ export const scrapeSector = async (
     const remaining = page.totalRecords != null ? page.totalRecords - totalScraped : null;
     const pagePdfSec = Math.max(1, (Date.now() - pagePdfStartedAt) / 1000);
     const pdfRate = Math.round(((pagePdfStats.pdfDownloadedThisPage + pagePdfStats.pdfSkippedExistingThisPage) / pagePdfSec) * 60);
+
+    const pdfOk = pagePdfStats.pdfDownloadedThisPage + pagePdfStats.pdfSkippedExistingThisPage;
+    display.pageLine(
+      pageIndex + 1,
+      page.totalPages,
+      toWrite.length,
+      totalScraped,
+      runLimit,
+      pdfOk,
+      pagePdfStats.pdfConfidentialThisPage,
+      pagePdfStats.pdfFailedThisPage,
+      elapsed(),
+    );
 
     logger.info('Page scraped', {
       sector: `${sectorId}=${sectorName}`,

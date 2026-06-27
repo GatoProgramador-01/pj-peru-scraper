@@ -16,7 +16,7 @@ export const logger = createLogger({
     }),
   ),
   transports: [
-    new transports.Console(),
+    new transports.Console({ level: 'warn' }),
     new transports.File({
       filename: path.join(LOG_DIR, `scraper_${new Date().toISOString().slice(0, 10)}.log`),
     }),
