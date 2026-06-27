@@ -48,6 +48,10 @@ export const submitSearch = async (
   }
 
   const body = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+
+  // For sites that redirect after search (e.g. pj-peru: inicio.xhtml → resultado.xhtml),
+  // suppress auto-redirect so we can upgrade the HTTP location to HTTPS before following.
+  const needsRedirectUpgrade = Boolean(config.resultsUrl);
   const resp: AxiosResponse<string> = await session.client.post(url, body, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -55,9 +59,27 @@ export const submitSearch = async (
       'Cookie': cookieHeader(session),
       ...extraHeaders,
     },
+    ...(needsRedirectUpgrade ? { maxRedirects: 0, validateStatus: (s: number) => s < 400 } : {}),
   });
 
   absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
+
+  // Handle 302 redirect → upgrade http→https and follow manually
+  if (needsRedirectUpgrade && (resp.status === 301 || resp.status === 302 || resp.status === 303)) {
+    const location = resp.headers['location'] as string | undefined;
+    if (!location) throw new Error('Search redirect missing Location header');
+    const httpsLocation = location.replace(/^http:\/\//i, 'https://');
+    logger.info('Following search redirect', { from: location, to: httpsLocation });
+    const r2: AxiosResponse<string> = await session.client.get(httpsLocation, {
+      headers: { 'Cookie': cookieHeader(session), 'Referer': url },
+    });
+    absorbCookies(session, r2.headers['set-cookie'] as string[] | undefined);
+    if (isRateLimited(r2.data)) throw new Error('Rate limited on search redirect follow');
+    const $full = cheerioLoad(r2.data);
+    const parsed = parsePage($full, config, config.baseUrl);
+    return { ...parsed, activeUrl: httpsLocation.split('?')[0].split(';')[0] };
+  }
+
   if (isRateLimited(resp.data)) throw new Error('Rate limited on search submit');
 
   if (ajax) {

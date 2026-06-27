@@ -26,21 +26,43 @@ export const buildPaginationBody = (page: ParsedPage, targetPageIndex: number, r
   return params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 };
 
+/** RichFaces data-scroller pagination (pj-peru). Sends page number via spinner. */
+export const buildRichFacesPaginationBody = (page: ParsedPage, targetPageIndex: number): string => {
+  const scroller = 'formBuscador:data1';
+  const params: [string, string][] = [
+    ['javax.faces.partial.ajax', 'true'],
+    ['javax.faces.source', scroller],
+    ['javax.faces.partial.execute', scroller],
+    ['javax.faces.partial.render', `${scroller} formBuscador:panel`],
+    ['javax.faces.behavior.event', 'action'],
+    ['org.richfaces.ajax.component', scroller],
+    [page.formId, page.formId],
+    [scroller, scroller],
+    [`${scroller}:page`, String(targetPageIndex + 1)],
+    ['javax.faces.ViewState', page.viewState],
+  ];
+  return params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+};
+
 export const fetchNextPage = async (
   session: Session,
   url: string,
   page: ParsedPage,
   targetPageIndex: number,
   rowsPerPage: number,
+  useRichFaces = false,
 ): Promise<{ $: $Root; newViewState: string | null }> => {
-  const body = buildPaginationBody(page, targetPageIndex, rowsPerPage);
+  const postUrl = page.activeUrl ?? url;
+  const body = useRichFaces
+    ? buildRichFacesPaginationBody(page, targetPageIndex)
+    : buildPaginationBody(page, targetPageIndex, rowsPerPage);
 
-  const resp: AxiosResponse<string> = await session.client.post(url, body, {
+  const resp: AxiosResponse<string> = await session.client.post(postUrl, body, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       'Faces-Request': 'partial/ajax',
       'X-Requested-With': 'XMLHttpRequest',
-      'Referer': url,
+      'Referer': postUrl,
       'Cookie': cookieHeader(session),
     },
   });

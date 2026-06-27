@@ -170,6 +170,8 @@ export const scrapeSector = async (
   const envPdfConcurrency = Number(process.env.PDF_CONCURRENCY ?? 1) || 1;
   const pdfConcurrency = Math.max(1, opts.pdfConcurrency ?? envPdfConcurrency);
 
+  const useRichFaces = config.rowParser === 'richfacesRepeat';
+
   const { startPage, completed } = opts.resume
     ? loadCheckpoint(site, sectorId)
     : { startPage: 0, completed: false };
@@ -227,7 +229,7 @@ export const scrapeSector = async (
   }
   for (let i = 0; i < pageIndex; i++) {
     const { $: next$, newViewState } = await withRetry(
-      () => fetchNextPage(session, config.startUrl, page, i + 1, ROWS_PER_PAGE),
+      () => fetchNextPage(session, config.startUrl, page, i + 1, ROWS_PER_PAGE, useRichFaces),
       config.timing.retryWaitMs,
       `resume-nav-${i + 1}`,
       metrics,
@@ -342,7 +344,7 @@ export const scrapeSector = async (
     }
 
     const { $: next$, newViewState } = await withRetry(
-      () => fetchNextPage(session, config.startUrl, page, pageIndex + 1, ROWS_PER_PAGE),
+      () => fetchNextPage(session, config.startUrl, page, pageIndex + 1, ROWS_PER_PAGE, useRichFaces),
       config.timing.retryWaitMs,
       `page-${pageIndex + 1}-sector-${sectorId}`,
       metrics,

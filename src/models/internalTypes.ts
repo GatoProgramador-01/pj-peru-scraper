@@ -29,4 +29,6 @@ export interface ParsedPage {
   totalPages: number | null;
   totalRecords: number | null;
   paginatorId: string | null;
+  /** Active URL to use for pagination POSTs (may differ from startUrl after redirect). */
+  activeUrl?: string;
 }

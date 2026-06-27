@@ -73,10 +73,14 @@ export interface SiteConfig {
   name: string;
   baseUrl: string;
   startUrl: string;
+  /** For portals that redirect to a different URL after search (e.g. pj-peru: inicio→resultado). */
+  resultsUrl?: string;
   selectors: Selectors;
   timing: TimingConfig;
   search?: SearchConfig;
   columns: ColumnMap;
+  /** Parser variant for sites that use div-based result lists instead of <tr> rows. */
+  rowParser?: 'table' | 'richfacesRepeat';
 }
 
 export interface ScrapeOptions {
