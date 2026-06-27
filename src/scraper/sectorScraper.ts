@@ -172,8 +172,10 @@ export const scrapeSector = async (
 
   const useRichFaces = config.rowParser === 'richfacesRepeat';
 
+  const districtId = opts.districtId ?? null;
+
   const { startPage, completed } = opts.resume
-    ? loadCheckpoint(site, sectorId)
+    ? loadCheckpoint(site, sectorId, districtId)
     : { startPage: 0, completed: false };
 
   if (completed) return 0;
@@ -200,9 +202,9 @@ export const scrapeSector = async (
   if (config.search) {
     display.phaseStep('Submitting search');
     page = await withRetry(
-      () => submitSearch(session, config.startUrl, page, config, sectorId),
+      () => submitSearch(session, config.startUrl, page, config, sectorId, districtId),
       config.timing.retryWaitMs,
-      `search-sector-${sectorId}`,
+      `search-sector-${sectorId}${districtId ? `-d${districtId}` : ''}`,
       metrics,
     );
     display.phaseOk(
@@ -283,7 +285,7 @@ export const scrapeSector = async (
 
     totalScraped += toWrite.length;
     metrics.totalDocumentsCollected += toWrite.length;
-    if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped);
+    if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, false, districtId);
 
     const elapsedSec = (Date.now() - sectorStart) / 1000;
     const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
@@ -369,7 +371,7 @@ export const scrapeSector = async (
     pageIndex++;
   }
 
-  if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true);
+  if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true, districtId);
   logger.info('Sector done', { sector: `${sectorId}=${sectorName}`, totalScraped, elapsed: elapsed() });
   return totalScraped;
 };

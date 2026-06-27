@@ -16,11 +16,12 @@ export const submitSearch = async (
   page: ParsedPage,
   config: SiteConfig,
   sectorId?: string | null,
+  districtId?: string | null,
 ): Promise<ParsedPage> => {
   if (!config.search) return page;
 
   const { buttonId, buttonValue, formId, fields, ajax, sectorField } = config.search;
-  logger.info('Submitting search form', { buttonId, ajax, sectorId: sectorId ?? 'none' });
+  logger.info('Submitting search form', { buttonId, ajax, sectorId: sectorId ?? 'none', districtId: districtId ?? 'none' });
 
   let params: [string, string][];
   let extraHeaders: Record<string, string>;
@@ -35,6 +36,7 @@ export const submitSearch = async (
       ...Object.entries(fields),
     ];
     if (sectorId && sectorField) params.push([sectorField, sectorId]);
+    if (districtId) params.push(['formBuscador:buDistrito', districtId]);
     params.push(['javax.faces.ViewState', page.viewState]);
     extraHeaders = { 'Faces-Request': 'partial/ajax', 'X-Requested-With': 'XMLHttpRequest' };
   } else {
@@ -43,6 +45,7 @@ export const submitSearch = async (
       ...Object.entries(fields),
     ];
     if (sectorId && sectorField) params.push([sectorField, sectorId]);
+    if (districtId) params.push(['formBuscador:buDistrito', districtId]);
     params.push([buttonId, buttonValue], ['javax.faces.ViewState', page.viewState]);
     extraHeaders = {};
   }

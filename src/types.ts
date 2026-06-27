@@ -93,9 +93,10 @@ export interface ScrapeOptions {
   proxy: string | null;
   headed: boolean;
   profile: string | null;
-  resume: boolean;         // true = load per-sector checkpoints; false = fresh start
-  sectorId: string | null; // null = scrape all sectors; string = specific sector only
-  pdfConcurrency?: number; // maximum concurrent PDF downloads per page
+  resume: boolean;           // true = load per-sector checkpoints; false = fresh start
+  sectorId: string | null;   // null = scrape all sectors; string = specific sector only
+  districtId?: string | null; // pj-peru only: override formBuscador:buDistrito
+  pdfConcurrency?: number;   // maximum concurrent PDF downloads per page
 }
 
 export interface Checkpoint {

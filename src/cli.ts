@@ -34,6 +34,10 @@ const argv = await yargs(hideBin(process.argv))
     type: 'string',
     describe: 'Sector ID to scrape (e.g. 1=MINERIA). Omit to scrape all sectors.',
   })
+  .option('district', {
+    type: 'string',
+    describe: 'pj-peru only: district ID to filter buDistrito (e.g. 18=Lima). Used by parallel-districts.mjs.',
+  })
   .option('discover-sectors', {
     type: 'boolean',
     default: false,
@@ -111,6 +115,7 @@ const opts: ScrapeOptions = {
   profile: null,
   resume: argv.resume,
   sectorId: argv.sector ?? null,
+  districtId: argv.district ?? null,
   pdfConcurrency: Math.max(1, argv['pdf-concurrency'] ?? 1),
 };
 
