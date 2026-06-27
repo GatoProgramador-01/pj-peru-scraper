@@ -20,6 +20,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Mirrors src/config.ts — update here if sectors change
 const SECTOR_MAP = {
   'oefa': { '1': 'MINERIA', '2': 'ELECTRICIDAD', '3': 'HIDROCARBUROS', '8': 'PESQUERIA', '9': 'INDUSTRIA' },
+  // pj-peru: buCorte 1=Corte Suprema (207k docs) | 2=Corte Superior todos los distritos (458k docs)
+  'pj-peru': { '1': 'SUPREMA', '2': 'SUPERIOR' },
 };
 
 const args = process.argv.slice(2);
