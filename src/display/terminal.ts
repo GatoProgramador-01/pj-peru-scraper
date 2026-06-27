@@ -80,20 +80,31 @@ export const pageLine = (
   pdfFail: number,
   elapsed: string,
   docsPerMin: number | null,
+  pagesPerMin: number | null = null,
 ): void => {
   const totalPagesStr = totalPages != null ? String(totalPages) : '?';
   const pct = totalRecords != null && totalRecords > 0
     ? ` (${((totalDocs / totalRecords) * 100).toFixed(1)}%)`
     : '';
   const remaining = totalRecords != null ? totalRecords - totalDocs : null;
-  const eta = docsPerMin != null && remaining != null && docsPerMin > 0
-    ? `~${Math.ceil(remaining / docsPerMin)} min`
-    : 'calculando';
+  const remainingPages = totalPages != null ? totalPages - pageNum : null;
+
+  let eta = 'calculando';
+  if (docsPerMin != null && remaining != null && docsPerMin > 0) {
+    eta = `~${Math.ceil(remaining / docsPerMin)} min`;
+  } else if (pagesPerMin != null && remainingPages != null && pagesPerMin > 0) {
+    eta = `~${Math.ceil(remainingPages / pagesPerMin)} min (est. por paginas)`;
+  }
+
   const pdfParts = [
     `${pdfOk} descargados`,
     pdfConf > 0 ? `${pdfConf} confidenciales` : null,
     pdfFail > 0 ? `${pdfFail} fallidos` : null,
   ].filter(Boolean).join(' | ');
+
+  const velocidad = docsPerMin != null
+    ? `${docsPerMin} docs/min${pagesPerMin != null ? ` | ${pagesPerMin} pag/min` : ''}`
+    : 'calculando';
 
   process.stdout.write('\n');
   hr();
@@ -102,7 +113,7 @@ export const pageLine = (
   process.stdout.write(`  + Documentos esta pagina  : ${docsThisPage}\n`);
   process.stdout.write(`    Total acumulado         : ${totalDocs}${targetDocs != null ? ` / ${targetDocs}` : ''}${pct}\n`);
   process.stdout.write(`    PDFs                    : ${pdfParts}\n`);
-  process.stdout.write(`    Velocidad               : ${docsPerMin != null ? `${docsPerMin} docs/min` : 'calculando'}\n`);
+  process.stdout.write(`    Velocidad               : ${velocidad}\n`);
   process.stdout.write(`    ETA                     : ${eta} restantes\n`);
   hr();
 };

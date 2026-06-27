@@ -207,6 +207,12 @@ export const scrapeSector = async (
       `search-sector-${sectorId}${districtId ? `-d${districtId}` : ''}`,
       metrics,
     );
+    // Compute totalPages from totalRecords if the paginator didn't expose it directly.
+    // RichFaces AJAX partial responses never include the DataScroller config script,
+    // so totalPages must be derived on the initial full-page load or not at all.
+    if (page.totalRecords !== null && page.totalPages === null) {
+      page = { ...page, totalPages: Math.ceil(page.totalRecords / ROWS_PER_PAGE) };
+    }
     display.phaseOk(
       'Search complete',
       `${page.totalRecords ?? '?'} records · ${page.totalPages ?? '?'} pages · ${elapsed()}`,
@@ -289,6 +295,7 @@ export const scrapeSector = async (
 
     const elapsedSec = (Date.now() - sectorStart) / 1000;
     const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
+    const pagesPerMin = elapsedSec > 5 ? Math.round(((pageIndex + 1) / elapsedSec) * 60 * 10) / 10 : null;
     const remaining = page.totalRecords != null ? page.totalRecords - totalScraped : null;
     const pagePdfSec = Math.max(1, (Date.now() - pagePdfStartedAt) / 1000);
     const pdfRate = Math.round(((pagePdfStats.pdfDownloadedThisPage + pagePdfStats.pdfSkippedExistingThisPage) / pagePdfSec) * 60);
@@ -306,6 +313,7 @@ export const scrapeSector = async (
       pagePdfStats.pdfFailedThisPage,
       elapsed(),
       docsPerMin,
+      pagesPerMin,
     );
 
     logger.info('Page scraped', {
