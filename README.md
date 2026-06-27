@@ -17,7 +17,7 @@ El desafio pide extraer documentos, navegar paginas, descargar PDFs y manejar ra
 | Manejo 429 con backoff | Cumplido | `npm run simulate:429` valida 429 recuperable y persistente |
 | Registro de fallos reintentables | Cumplido | `failed-pdfs.json` |
 | OEFA — sitio alternativo | Validado (1,724 docs, 5 sectores, 0 HTTP 429) | `output/mineria/`, `output/hidrocarburos/`, etc. |
-| PJ Peru — sitio principal | Validado con VPN Peru (100 docs, 10 paginas, PDFs ok) | `output/pjperu/pj-peru-100.jsonl` |
+| PJ Peru — sitio principal | Validado con VPN Peru (100 docs, 10 paginas, 100 PDFs ok) | `output/pjperu/pj-peru-100.jsonl` |
 
 ## Quick Start
 
@@ -277,9 +277,20 @@ Con `scrape:oefa:parallel`: todos los sectores en paralelo, tiempo total = secto
 | Prueba inicial (5 docs) | 5 | 5 | 0 | 0 | 35s |
 | Corrida validacion (100 docs, 10 paginas) | 100 | 100 | 0 | 0 | ~7m |
 
-- Dataset total: 207,527 resultados (Corte Suprema) · 666,436 resoluciones (todas las cortes)
+**Escala real del dataset (medida en vivo):**
+
+| Corte | Docs totales | Paginas (10/pag) | Con PDFs (5 conc.) | Sin PDFs | Paralelo (ambas cortes) |
+| --- | ---: | ---: | --- | --- | --- |
+| Suprema (buCorte=1) | 207,527 | 20,753 | ~34h | ~8h | — |
+| Superior/Todos (buCorte=2) | ~458,909 | ~45,891 | ~76h | ~18h | — |
+| **Ambas en paralelo** | **~666,436** | **~66,644** | **~76h** | **~18h** | la mas lenta dicta |
+
+Estimacion basada en: 14 docs/min con PDFs (5 concurrentes) y ~100 docs/min sin PDFs.
+**Recomendacion operacional**: correr sin PDFs primero para obtener el JSONL completo (~18h), luego descarga de PDFs en segundo paso con mayor concurrencia.
+
 - PDFs via GET directo: `/jurisprudenciaweb/ServletDescarga?uuid=...` (298–453 KB por PDF)
-- 0 HTTP 429 observados; politica de delay 2.5–5.5s entre paginas.
+- 0 HTTP 429 observados; delay reducido a 800–1800ms entre paginas tras validacion.
+- Checkpoints por sector: reanudar con `npm run scrape:pjperu:full:resume` si se interrumpe.
 
 Notas generales:
 
@@ -318,6 +329,46 @@ Con `--resume`, el scraper:
 6. Marca `completed: true` solo al terminar el sector.
 
 Para auditoria limpia, usar `--fresh-output`. Para continuidad operacional, usar `--resume`.
+
+## Estrategia De Extraccion Masiva PJ Peru
+
+El dataset completo (~666k docs) no requiere descargarse de una sola vez. La estrategia optima en dos fases:
+
+### Fase 1 — JSONL sin PDFs (rapido)
+
+```bash
+node scripts/parallel-sectors.mjs --site pj-peru
+# Sin --pdfs: solo metadatos, ~100 docs/min, ambas cortes en paralelo
+# Tiempo estimado sin PDFs: ~18h para las 66,644 paginas totales
+```
+
+### Fase 2 — PDFs de los docs ya scrapeados
+
+Pendiente implementar: script separado que lee el JSONL y descarga PDFs
+con mayor concurrencia (20-50 en paralelo) sin re-navegar el portal.
+
+### Tabla de escenarios locales (sin VPN permanente)
+
+| Limite por corte | Docs totales | Sin PDFs | Con PDFs 5-conc | Paralelo |
+| --- | ---: | --- | --- | --- |
+| 100 paginas (demo) | ~2,000 | ~5 min | ~15 min | ~8 min |
+| 500 paginas | ~10,000 | ~25 min | ~1.5h | ~50 min |
+| 2,000 paginas | ~40,000 | ~1.5h | ~5h | ~2.5h |
+| Sin limite — JSONL only | ~666,436 | ~18h | — | ~18h |
+| Sin limite — con PDFs | ~666,436 | — | ~76h | ~76h |
+
+Comandos por escenario:
+
+```bash
+# Demo rapida (2000 docs, ambas cortes, sin PDFs, ~8 min):
+node scripts/parallel-sectors.mjs --site pj-peru --limit 1000
+
+# Muestra profunda con PDFs (~15 min):
+node scripts/parallel-sectors.mjs --site pj-peru --limit 1000 --pdfs --pdf-dir output/pjperu-full/pdfs --pdf-concurrency 5
+
+# Correr solo JSONL completo y luego PDFs por separado:
+node scripts/parallel-sectors.mjs --site pj-peru
+```
 
 ## PJ Peru — Diferencias Tecnicas Respecto A OEFA
 
