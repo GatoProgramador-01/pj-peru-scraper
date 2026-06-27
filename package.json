@@ -11,7 +11,9 @@
     "scrape:oefa:mineria": "npm run build && node dist/cli.js --site oefa --sector 1 --pdfs --pdf-dir output/mineria/pdfs --out output/mineria/oefa-documents.jsonl --pdf-concurrency 4 --fresh-output",
     "scrape:oefa:mineria:resume": "npm run build && node dist/cli.js --site oefa --sector 1 --pdfs --pdf-dir output/mineria/pdfs --out output/mineria/oefa-documents.jsonl --pdf-concurrency 4 --resume",
     "probe:oefa:429": "npm run build && node dist/tools/probe429.js",
-    "simulate:429": "npm run build && node dist/tools/simulate429.js"
+    "simulate:429": "npm run build && node dist/tools/simulate429.js",
+    "scrape:oefa:parallel": "npm run build && node scripts/parallel-sectors.mjs --site oefa --pdfs --pdf-dir output/oefa/pdfs --pdf-concurrency 20",
+    "scrape:oefa:parallel:dry": "npm run build && node scripts/parallel-sectors.mjs --site oefa --dry-run"
   },
   "dependencies": {
     "axios": "1.7.2",
