@@ -416,7 +416,17 @@ done
 
 Por que `--concurrency 1` funciona: el fallo original fue que 12 procesos arrancan juntos y saturan el ViewState pool. Un proceso solo nunca compite con nadie — puede extraer la pagina completa del distrito sin recibir respuestas AJAX vacias.
 
-### Optimizacion PDF: Skip Existing
+### Arquitectura Paralela — Diagrama Excalidraw
+
+El archivo `docs/parallel-architecture.excalidraw` contiene el diagrama completo con tres secciones:
+
+- **ACTUAL**: bottleneck por acoplamiento scrape+PDF dentro del loop de paginacion
+- **OPTIMIZADO**: 2 fases independientes (JSONL rapido, PDF desacoplado)
+- **FUTURO**: fichaFetcher como tercer pase de enriquecimiento
+
+Para abrir: importar en [excalidraw.com](https://excalidraw.com) o instalar la extension Excalidraw en VS Code.
+
+### Optimizacion PDF: Skip Existing y Two-Phase Strategy
 
 El downloader siempre revisa si el PDF ya existe en disco antes de hacer la peticion HTTP. Si existe, lo marca como `skippedExisting` y sigue. Esto significa que:
 
@@ -424,23 +434,38 @@ El downloader siempre revisa si el PDF ya existe en disco antes de hacer la peti
 - **Rondas sucesivas son fast**: la segunda corrida de produccion solo descarga los PDFs que no tiene.
 - **PDFs y metadatos son independientes**: se puede correr sin `--pdfs` para extraer JSONL rapido, y luego correr solo PDFs en una segunda fase.
 
-La extraccion de metadatos (JSONL) es significativamente mas rapida que la descarga de PDFs porque:
+La extraccion de metadatos (JSONL) es significativamente mas rapida que la descarga de PDFs porque cada request AJAX devuelve 10 documentos en una sola respuesta HTML, mientras que cada PDF requiere una conexion GET independiente:
 
 ```
-JSONL: 1 request AJAX por pagina × 10 docs = ~0.5s/doc
-PDF:   1 request GET por doc × ~2s latencia = ~2s/doc
+JSONL: 1 request AJAX/pagina × 10 docs = ~0.5s/10 docs = ~0.05s/doc
+PDF:   1 request GET por doc × ~2s latencia = 2s/doc
+
+Ratio:  scraping = 3% del tiempo total
+        PDFs     = 97% del tiempo total
+        → desacoplarlos elimina el bottleneck
 ```
+
+**Ganancia estimada (dataset completo 459k docs):**
+
+| Estrategia | JSONL | PDFs | Total |
+| --- | ---: | ---: | ---: |
+| Actual (acoplado) | 3h | 41h dentro del loop | ~44h |
+| Optimizado 2 fases | 3h fase 1 | 5h fase 2 (50 conc.) | ~5h |
+| **Ganancia** | — | — | **9x speedup** |
 
 Estrategia optima para dataset completo:
 
 ```bash
-# Fase 1 — extraer todos los metadatos primero (~2h, sin PDFs)
+# Fase 1 — extraer todos los metadatos primero (~3h, sin PDFs)
 node scripts/parallel-districts.mjs --concurrency 12
 
-# Fase 2 — descargar PDFs con alta concurrencia (~3h, sin re-navegar el portal)
-# scripts/pdf-only.mjs --input output/pjperu-districts/all-districts.jsonl --concurrency 50
-# (pendiente implementar)
+# Fase 2 — descargar PDFs con alta concurrencia desde JSONL existente (~5h)
+# sin tocar JSF session, sin bloquear paginacion
+# node scripts/pdf-only.mjs --input output/pjperu-districts/all-districts.jsonl --concurrency 50
+# (pendiente implementar — scripts/pdf-only.mjs)
 ```
+
+**Por que la Fase 2 puede usar concurrencia 50 sin saturar:** `pdf-only.mjs` solo hace GET a `/ServletDescarga?uuid=X`. No crea sesiones JSF, no envia ViewState, no usa el pool de sesiones del servidor. El unico limite es el ancho de banda y el rate-limit de `/ServletDescarga`, que en produccion no ha mostrado 429.
 
 ## Estrategia De Extraccion Masiva PJ Peru
 
@@ -522,12 +547,28 @@ El modal "Ver Ficha" (boton en la tabla de resultados) expone campos que no esta
 
 `ponente` y `dirimente` aparecen como `***` — el portal no los expone, no es un bug del scraper.
 
-Para implementar la extraccion de ficha: cada fila devuelve un link o boton que dispara un POST AJAX JSF. El scraper necesita:
-1. Capturar el ID del componente que dispara la ficha (via DevTools Network al hacer click en "Ver Ficha").
-2. Implementar `src/jsf/fichaFetcher.ts` que hace el POST con `javax.faces.source` del componente y el ViewState activo.
-3. Parsear el HTML del panel de respuesta (estructura de tabla `<td>Label</td><td>Valor</td>`).
+Para implementar la extraccion de ficha: el boton "Ver Ficha" dispara un POST AJAX JSF. El scraper necesita conocer el `javax.faces.source` (ID del componente que emite el evento). Ese ID cambia segun la fila y la sesion, y solo se puede obtener capturando el request real.
 
-Esto requiere captura del Network request real — ver seccion "Checklist De Entrega" para el flujo.
+**Instrucciones de captura (una sola vez, con VPN activa):**
+
+1. Abrir el portal en Chrome con VPN Peru activa.
+2. Buscar cualquier caso — aparecen los resultados en la tabla.
+3. Abrir DevTools → tab **Network** → filtrar por **Fetch/XHR**.
+4. Hacer click en el boton "Ver Ficha" de cualquier fila.
+5. En la lista de requests, buscar un POST a `resultado.xhtml`.
+6. Click en ese request → tab **Payload** → copiar todo el Form Data.
+7. Tab **Response** → copiar el HTML de respuesta.
+8. Pegar ambos en el chat.
+
+Lo que necesitamos del Form Data:
+```
+javax.faces.source     → ID del componente (ej: "formBuscador:repeat:0:j_idt789")
+javax.faces.partial.execute  → componentes a ejecutar
+javax.faces.partial.render   → panel que renderiza la ficha
+javax.faces.ViewState  → ViewState activo
+```
+
+Con esos valores podemos implementar `src/jsf/fichaFetcher.ts` en ~1 sesion y agregar los 10 campos al JSONL automaticamente durante el scrape.
 
 ## Agenda Proxima Sesion
 

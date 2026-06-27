@@ -1,0 +1,621 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "id": "bg-current", "type": "rectangle", "x": 20, "y": 20, "width": 2160, "height": 580,
+      "angle": 0, "strokeColor": "#c05621", "backgroundColor": "#fff3e0", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 50,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 101,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "title-current", "type": "text", "x": 40, "y": 30, "width": 900, "height": 36,
+      "angle": 0, "strokeColor": "#7c2d12", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 102,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⚠  ACTUAL — Docs y PDFs ACOPLADOS por página (bottleneck)",
+      "fontSize": 24, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "⚠  ACTUAL — Docs y PDFs ACOPLADOS por página (bottleneck)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "portal-box", "type": "rectangle", "x": 880, "y": 75, "width": 440, "height": 65,
+      "angle": 0, "strokeColor": "#1e3a5f", "backgroundColor": "#dbeafe", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 103,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "portal-text", "type": "text", "x": 886, "y": 88, "width": 428, "height": 40,
+      "angle": 0, "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 104,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "PJ Peru Portal  (RichFaces/JSF)\njurisprudenciaweb.pj.gob.pe",
+      "fontSize": 16, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "PJ Peru Portal  (RichFaces/JSF)\njurisprudenciaweb.pj.gob.pe",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w1-box", "type": "rectangle", "x": 35, "y": 185, "width": 320, "height": 380,
+      "angle": 0, "strokeColor": "#9a3412", "backgroundColor": "#fed7aa", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 110,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w1-header", "type": "text", "x": 42, "y": 192, "width": 306, "height": 36,
+      "angle": 0, "strokeColor": "#7c2d12", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 111,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "Worker 1 — d2 ANCASH",
+      "fontSize": 15, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "Worker 1 — d2 ANCACH",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w1-scrape", "type": "rectangle", "x": 50, "y": 238, "width": 290, "height": 65,
+      "angle": 0, "strokeColor": "#15803d", "backgroundColor": "#bbf7d0", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 112,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w1-scrape-text", "type": "text", "x": 56, "y": 248, "width": 278, "height": 44,
+      "angle": 0, "strokeColor": "#14532d", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 113,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⚡ Scrape página N  (~0.5s)\n10 docs → JSONL",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "⚡ Scrape página N  (~0.5s)\n10 docs → JSONL",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w1-pdf", "type": "rectangle", "x": 50, "y": 330, "width": 290, "height": 80,
+      "angle": 0, "strokeColor": "#dc2626", "backgroundColor": "#fecaca", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 114,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w1-pdf-text", "type": "text", "x": 56, "y": 338, "width": 278, "height": 64,
+      "angle": 0, "strokeColor": "#991b1b", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 115,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⏳ Descargar 10 PDFs  (~20s)\nbloquea siguiente página\n2s × 10 × pdf-conc 15 = espera",
+      "fontSize": 13, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "⏳ Descargar 10 PDFs  (~20s)\nbloquea siguiente página\n2s × 10 × pdf-conc 15 = espera",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w1-repeat", "type": "text", "x": 56, "y": 425, "width": 278, "height": 40,
+      "angle": 0, "strokeColor": "#7c2d12", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 116,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "↻  repite ×7168 páginas",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "↻  repite ×7168 páginas",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w1-timer", "type": "text", "x": 56, "y": 462, "width": 278, "height": 88,
+      "angle": 0, "strokeColor": "#7c2d12", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 117,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⏱  0.5s JSONL + 20s PDFs\n= 97% tiempo esperando PDFs\n7168 pág × 20.5s ≈ 41h/distrito",
+      "fontSize": 13, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "⏱  0.5s JSONL + 20s PDFs\n= 97% tiempo esperando PDFs\n7168 pág × 20.5s ≈ 41h/distrito",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w2-box", "type": "rectangle", "x": 375, "y": 185, "width": 320, "height": 380,
+      "angle": 0, "strokeColor": "#9a3412", "backgroundColor": "#fed7aa", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 120,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w2-header", "type": "text", "x": 382, "y": 192, "width": 306, "height": 20,
+      "angle": 0, "strokeColor": "#7c2d12", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 121,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "Worker 2 — d3 APURIMAC",
+      "fontSize": 15, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "Worker 2 — d3 APURIMAC",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w2-scrape", "type": "rectangle", "x": 390, "y": 238, "width": 290, "height": 65,
+      "angle": 0, "strokeColor": "#15803d", "backgroundColor": "#bbf7d0", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 122,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w2-scrape-text", "type": "text", "x": 396, "y": 255, "width": 278, "height": 30,
+      "angle": 0, "strokeColor": "#14532d", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 123,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⚡ Scrape página N  (~0.5s)",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "⚡ Scrape página N  (~0.5s)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w2-pdf", "type": "rectangle", "x": 390, "y": 330, "width": 290, "height": 65,
+      "angle": 0, "strokeColor": "#dc2626", "backgroundColor": "#fecaca", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 124,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w2-pdf-text", "type": "text", "x": 396, "y": 346, "width": 278, "height": 33,
+      "angle": 0, "strokeColor": "#991b1b", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 125,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⏳ Descargar 10 PDFs  (~20s)",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "⏳ Descargar 10 PDFs  (~20s)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "dots-workers", "type": "text", "x": 720, "y": 355, "width": 100, "height": 36,
+      "angle": 0, "strokeColor": "#9a3412", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 130,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "· · ·",
+      "fontSize": 32, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "· · ·",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w12-box", "type": "rectangle", "x": 850, "y": 185, "width": 320, "height": 380,
+      "angle": 0, "strokeColor": "#9a3412", "backgroundColor": "#fed7aa", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 131,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w12-header", "type": "text", "x": 857, "y": 192, "width": 306, "height": 20,
+      "angle": 0, "strokeColor": "#7c2d12", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 132,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "Worker 12 — d18 LIMA",
+      "fontSize": 15, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "Worker 12 — d18 LIMA",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w12-scrape", "type": "rectangle", "x": 865, "y": 238, "width": 290, "height": 65,
+      "angle": 0, "strokeColor": "#15803d", "backgroundColor": "#bbf7d0", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 133,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w12-scrape-text", "type": "text", "x": 871, "y": 255, "width": 278, "height": 30,
+      "angle": 0, "strokeColor": "#14532d", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 134,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⚡ Scrape página N  (~0.5s)",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "⚡ Scrape página N  (~0.5s)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "w12-pdf", "type": "rectangle", "x": 865, "y": 330, "width": 290, "height": 65,
+      "angle": 0, "strokeColor": "#dc2626", "backgroundColor": "#fecaca", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 135,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "w12-pdf-text", "type": "text", "x": 871, "y": 346, "width": 278, "height": 33,
+      "angle": 0, "strokeColor": "#991b1b", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 136,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⏳ Descargar 10 PDFs  (~20s)",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "⏳ Descargar 10 PDFs  (~20s)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "bottleneck-label", "type": "rectangle", "x": 1210, "y": 270, "width": 440, "height": 120,
+      "angle": 0, "strokeColor": "#dc2626", "backgroundColor": "#fee2e2", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "dashed", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 140,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "bottleneck-text", "type": "text", "x": 1218, "y": 278, "width": 424, "height": 104,
+      "angle": 0, "strokeColor": "#991b1b", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 141,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "BOTTLENECK\nScraping: 0.5s / página  (rápido ✓)\nPDF download: 2s × 10 docs = 20s\nRatio: 97% tiempo esperando PDFs\nWorker bloqueado hasta que terminen",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "BOTTLENECK\nScraping: 0.5s / página  (rápido ✓)\nPDF download: 2s × 10 docs = 20s\nRatio: 97% tiempo esperando PDFs\nWorker bloqueado hasta que terminen",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "arr-p-w1", "type": "arrow", "x": 880, "y": 140, "width": -530, "height": 45,
+      "angle": 0, "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 2}, "seed": 150,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "points": [[0, 0], [-530, 45]],
+      "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "id": "arr-p-w2", "type": "arrow", "x": 1000, "y": 140, "width": -135, "height": 45,
+      "angle": 0, "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 2}, "seed": 151,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "points": [[0, 0], [-135, 45]],
+      "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "id": "arr-p-w12", "type": "arrow", "x": 1100, "y": 140, "width": -90, "height": 45,
+      "angle": 0, "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 2}, "seed": 152,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "points": [[0, 0], [5, 45]],
+      "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "id": "output-current", "type": "text", "x": 35, "y": 585, "width": 1200, "height": 20,
+      "angle": 0, "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 160,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "Output: district-N.jsonl  +  pdfs/  (mismos archivos, generados al final de cada página)",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "Output: district-N.jsonl  +  pdfs/  (mismos archivos, generados al final de cada página)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "bg-optimized", "type": "rectangle", "x": 20, "y": 640, "width": 2160, "height": 590,
+      "angle": 0, "strokeColor": "#166534", "backgroundColor": "#f0fdf4", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 50,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 200,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "title-optimized", "type": "text", "x": 40, "y": 650, "width": 900, "height": 36,
+      "angle": 0, "strokeColor": "#14532d", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 201,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "✅  OPTIMIZADO — 2 fases independientes  (implementar: pdf-only.mjs)",
+      "fontSize": 24, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "✅  OPTIMIZADO — 2 fases independientes  (implementar: pdf-only.mjs)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "phase1-box", "type": "rectangle", "x": 35, "y": 705, "width": 620, "height": 250,
+      "angle": 0, "strokeColor": "#1d4ed8", "backgroundColor": "#dbeafe", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 210,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "phase1-title", "type": "text", "x": 45, "y": 712, "width": 600, "height": 24,
+      "angle": 0, "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 211,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "FASE 1 — Solo metadatos (sin PDFs)",
+      "fontSize": 18, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "FASE 1 — Solo metadatos (sin PDFs)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "phase1-workers", "type": "text", "x": 45, "y": 745, "width": 600, "height": 180,
+      "angle": 0, "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 212,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "34 workers en paralelo\ncada uno: solo scrape JSONL, cero PDFs\n\nPágina 1 → JSONL  (0.5s)\nPágina 2 → JSONL  (0.5s)\n...\nPágina 7168 → JSONL  (0.5s)\n\n⚡  7168 pág × 0.5s = ~60 min/distrito\n    34 distritos ÷ 12 workers = ~3h total",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "34 workers en paralelo\ncada uno: solo scrape JSONL, cero PDFs\n\nPágina 1 → JSONL  (0.5s)\nPágina 2 → JSONL  (0.5s)\n...\nPágina 7168 → JSONL  (0.5s)\n\n⚡  7168 pág × 0.5s = ~60 min/distrito\n    34 distritos ÷ 12 workers = ~3h total",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "arr-phase1-jsonl", "type": "arrow", "x": 655, "y": 820, "width": 120, "height": 0,
+      "angle": 0, "strokeColor": "#1d4ed8", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 2}, "seed": 220,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "points": [[0, 0], [120, 0]],
+      "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "id": "jsonl-box", "type": "rectangle", "x": 775, "y": 755, "width": 300, "height": 120,
+      "angle": 0, "strokeColor": "#92400e", "backgroundColor": "#fef3c7", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 230,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "jsonl-text", "type": "text", "x": 783, "y": 775, "width": 284, "height": 80,
+      "angle": 0, "strokeColor": "#78350f", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 231,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "all-districts.jsonl\n459,000 docs\npdfUrl incluida en cada doc\n~3h para todo",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "all-districts.jsonl\n459,000 docs\npdfUrl incluida en cada doc\n~3h para todo",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "arr-jsonl-phase2", "type": "arrow", "x": 925, "y": 875, "width": 0, "height": 80,
+      "angle": 0, "strokeColor": "#15803d", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 2}, "seed": 240,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "points": [[0, 0], [0, 80]],
+      "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "id": "phase2-box", "type": "rectangle", "x": 35, "y": 965, "width": 1300, "height": 240,
+      "angle": 0, "strokeColor": "#15803d", "backgroundColor": "#dcfce7", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 250,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "phase2-title", "type": "text", "x": 45, "y": 973, "width": 1280, "height": 24,
+      "angle": 0, "strokeColor": "#14532d", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 251,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "FASE 2 — pdf-only.mjs  (sin tocar JSF session, sin bloquear paginación)",
+      "fontSize": 18, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "FASE 2 — pdf-only.mjs  (sin tocar JSF session, sin bloquear paginación)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "phase2-body", "type": "text", "x": 45, "y": 1005, "width": 1280, "height": 185,
+      "angle": 0, "strokeColor": "#14532d", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 252,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "Lee all-districts.jsonl línea por línea  →  extrae pdfUrl  →  descarga en lote\n\n[doc 1 pdfUrl] ──────────────────────────────────────────────── GET /ServletDescarga?uuid=A → pdfs/A.pdf\n[doc 2 pdfUrl] ──────────────────────────────────────────────── GET /ServletDescarga?uuid=B → pdfs/B.pdf\n[doc 3 pdfUrl] ──────────────────────────────────────────────── GET /ServletDescarga?uuid=C → pdfs/C.pdf\n· · ·\n[doc N pdfUrl] ──────────────────────────────────────────────── GET /ServletDescarga?uuid=N → pdfs/N.pdf\n\n50 descargas concurrentes  |  cookies pre-cargadas  |  skip si ya existe en disco\n⚡  459k PDFs × 2s / 50 conc = ~5h  vs 41h por distrito acoplado",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "Lee all-districts.jsonl línea por línea  →  extrae pdfUrl  →  descarga en lote\n\n[doc 1 pdfUrl] ──────────────────────────────────────────────── GET /ServletDescarga?uuid=A → pdfs/A.pdf\n[doc 2 pdfUrl] ──────────────────────────────────────────────── GET /ServletDescarga?uuid=B → pdfs/B.pdf\n[doc 3 pdfUrl] ──────────────────────────────────────────────── GET /ServletDescarga?uuid=C → pdfs/C.pdf\n· · ·\n[doc N pdfUrl] ──────────────────────────────────────────────── GET /ServletDescarga?uuid=N → pdfs/N.pdf\n\n50 descargas concurrentes  |  cookies pre-cargadas  |  skip si ya existe en disco\n⚡  459k PDFs × 2s / 50 conc = ~5h  vs 41h por distrito acoplado",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "skip-badge", "type": "rectangle", "x": 1360, "y": 1010, "width": 390, "height": 120,
+      "angle": 0, "strokeColor": "#0369a1", "backgroundColor": "#e0f2fe", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 260,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "skip-text", "type": "text", "x": 1368, "y": 1018, "width": 374, "height": 104,
+      "angle": 0, "strokeColor": "#075985", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 261,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "SKIP EXISTING (ya implementado)\nfs.existsSync(localPath) antes de GET\n→ retries gratis\n→ rondas sucesivas solo descargan\n   los PDFs que faltan",
+      "fontSize": 13, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "SKIP EXISTING (ya implementado)\nfs.existsSync(localPath) antes de GET\n→ retries gratis\n→ rondas sucesivas solo descargan\n   los PDFs que faltan",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "bg-future", "type": "rectangle", "x": 20, "y": 1260, "width": 2160, "height": 420,
+      "angle": 0, "strokeColor": "#4c1d95", "backgroundColor": "#f5f3ff", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 50,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 300,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "title-future", "type": "text", "x": 40, "y": 1270, "width": 1000, "height": 36,
+      "angle": 0, "strokeColor": "#4c1d95", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 301,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "🔮  FUTURO — Fase 3: fichaFetcher  (+10 campos por doc, requiere DevTools capture)",
+      "fontSize": 24, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "🔮  FUTURO — Fase 3: fichaFetcher  (+10 campos por doc, requiere DevTools capture)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "jsonl-in", "type": "rectangle", "x": 40, "y": 1330, "width": 260, "height": 100,
+      "angle": 0, "strokeColor": "#92400e", "backgroundColor": "#fef3c7", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 310,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "jsonl-in-text", "type": "text", "x": 48, "y": 1350, "width": 244, "height": 60,
+      "angle": 0, "strokeColor": "#78350f", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 311,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "all-districts.jsonl\n459k docs (sin ficha)",
+      "fontSize": 15, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "all-districts.jsonl\n459k docs (sin ficha)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "arr-in-ficha", "type": "arrow", "x": 300, "y": 1380, "width": 120, "height": 0,
+      "angle": 0, "strokeColor": "#7c3aed", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 2}, "seed": 315,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "points": [[0, 0], [120, 0]],
+      "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "id": "ficha-box", "type": "rectangle", "x": 420, "y": 1310, "width": 360, "height": 140,
+      "angle": 0, "strokeColor": "#7c3aed", "backgroundColor": "#ede9fe", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 320,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "ficha-text", "type": "text", "x": 428, "y": 1320, "width": 344, "height": 120,
+      "angle": 0, "strokeColor": "#4c1d95", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 321,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "fichaFetcher\n(pendiente implementar)\n\nPOST JSF → panel fichaDoc\nparse: DATOS DE LA RESOLUCIÓN\n        DATOS DEL PROCESO\n        DATOS DE PROCEDENCIA",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "center", "verticalAlign": "top",
+      "containerId": null, "originalText": "fichaFetcher\n(pendiente implementar)\n\nPOST JSF → panel fichaDoc\nparse: DATOS DE LA RESOLUCIÓN\n        DATOS DEL PROCESO\n        DATOS DE PROCEDENCIA",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "arr-ficha-out", "type": "arrow", "x": 780, "y": 1380, "width": 120, "height": 0,
+      "angle": 0, "strokeColor": "#7c3aed", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 2}, "seed": 325,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "points": [[0, 0], [120, 0]],
+      "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "id": "jsonl-out", "type": "rectangle", "x": 900, "y": 1310, "width": 300, "height": 140,
+      "angle": 0, "strokeColor": "#15803d", "backgroundColor": "#dcfce7", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 330,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "jsonl-out-text", "type": "text", "x": 908, "y": 1320, "width": 284, "height": 120,
+      "angle": 0, "strokeColor": "#14532d", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 331,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "JSONL enriquecido\n459k docs con:\n+ fechaResolucion\n+ tipoResolucion\n+ fallo\n+ jueces[]\n+ especialidad\n+ pretensionDelito\n+ proceso / organoJurisdiccional\n+ expedienteProcedencia\n+ falloProcedencia",
+      "fontSize": 13, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "JSONL enriquecido\n459k docs con:\n+ fechaResolucion\n+ tipoResolucion\n+ fallo\n+ jueces[]\n+ especialidad\n+ pretensionDelito\n+ proceso / organoJurisdiccional\n+ expedienteProcedencia\n+ falloProcedencia",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "devtools-badge", "type": "rectangle", "x": 1250, "y": 1330, "width": 460, "height": 120,
+      "angle": 0, "strokeColor": "#b45309", "backgroundColor": "#fef3c7", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "dashed", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 340,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "devtools-text", "type": "text", "x": 1258, "y": 1338, "width": 444, "height": 104,
+      "angle": 0, "strokeColor": "#92400e", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 341,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "⚠  NECESITA: DevTools Network capture\n1. Abrir portal con VPN\n2. DevTools → Network → XHR\n3. Click \"Ver Ficha\" en cualquier fila\n4. Copiar: URL, Form Data, Headers\n   → necesitamos javax.faces.source\n      y el nombre del componente JSF",
+      "fontSize": 13, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "⚠  NECESITA: DevTools Network capture\n1. Abrir portal con VPN\n2. DevTools → Network → XHR\n3. Click \"Ver Ficha\" en cualquier fila\n4. Copiar: URL, Form Data, Headers\n   → necesitamos javax.faces.source\n      y el nombre del componente JSF",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "comparison-box", "type": "rectangle", "x": 1750, "y": 700, "width": 400, "height": 500,
+      "angle": 0, "strokeColor": "#374151", "backgroundColor": "#f9fafb", "fillStyle": "solid",
+      "strokeWidth": 2, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": {"type": 3}, "seed": 350,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false
+    },
+    {
+      "id": "comparison-text", "type": "text", "x": 1758, "y": 708, "width": 384, "height": 484,
+      "angle": 0, "strokeColor": "#111827", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "groupIds": [], "frameId": null, "roundness": null, "seed": 351,
+      "version": 1, "versionNonce": 1, "isDeleted": false, "boundElements": null,
+      "updated": 1, "link": null, "locked": false,
+      "text": "COMPARACION TIEMPOS\n459k docs + PDFs\n─────────────────────\nACTUAL (acoplado)\n  JSONL:  ~3h   (12 workers)\n  PDFs:   ~41h  (dentro del loop)\n  Total:  ~44h\n\n  Problema: PDF download bloquea\n  la paginación. Worker idle\n  97% del tiempo esperando PDFs.\n─────────────────────\nOPTIMIZADO (2 fases)\n  Fase 1 JSONL: ~3h\n    (34 workers, 0.5s/pág solo)\n  Fase 2 PDFs:  ~5h\n    (50 conc, independiente JSF)\n  Total:  ~5h  (paralelo)\n─────────────────────\nFase 3 fichaFetcher\n  +1 POST/doc × 459k = ~12h\n  (ejecutar en background)\n─────────────────────\nGANANCIA TOTAL\n  44h  →  5h activo\n  = 9x speedup",
+      "fontSize": 14, "fontFamily": 2, "textAlign": "left", "verticalAlign": "top",
+      "containerId": null, "originalText": "COMPARACION TIEMPOS\n459k docs + PDFs\n─────────────────────\nACTUAL (acoplado)\n  JSONL:  ~3h   (12 workers)\n  PDFs:   ~41h  (dentro del loop)\n  Total:  ~44h\n\n  Problema: PDF download bloquea\n  la paginación. Worker idle\n  97% del tiempo esperando PDFs.\n─────────────────────\nOPTIMIZADO (2 fases)\n  Fase 1 JSONL: ~3h\n    (34 workers, 0.5s/pág solo)\n  Fase 2 PDFs:  ~5h\n    (50 conc, independiente JSF)\n  Total:  ~5h  (paralelo)\n─────────────────────\nFase 3 fichaFetcher\n  +1 POST/doc × 459k = ~12h\n  (ejecutar en background)\n─────────────────────\nGANANCIA TOTAL\n  44h  →  5h activo\n  = 9x speedup",
+      "lineHeight": 1.25
+    }
+  ],
+  "appState": {
+    "gridSize": null,
+    "viewBackgroundColor": "#ffffff"
+  },
+  "files": {}
+}
