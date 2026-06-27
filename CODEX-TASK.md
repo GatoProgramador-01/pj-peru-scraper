@@ -1,81 +1,98 @@
-# Codex Task — pj-peru full extraction
+# Codex Task — pj-peru full extraction (continuación)
 
 **Repo:** GatoProgramador-01/pj-peru-scraper  
-**Branch:** feat/pj-peru-full-extraction (already pushed, read HANDOFF-CODEX-2026-06-27.md first)
+**Branch:** feat/pj-peru-full-extraction  
+**Último commit:** cb2e3c0
 
 ---
 
-## Context in 5 lines
+## Contexto crítico (lee esto primero)
 
-This is a Node.js/TypeScript HTTP scraper for jurisprudencia.pj.gob.pe (RichFaces JSF portal).
-It runs 34 parallel workers (one per judicial district) and writes one JSONL per district.
-The portal blocks non-Peru IPs with 403 — VPN to Peru required for all network ops.
-Claude Code refactored output to memory-first (atomic write at end) and fixed maxSockets.
-6,221 PDFs already downloaded to output/pjperu-districts/pdfs/. All JSONL files were accidentally wiped by --fresh-output on a failed run.
+Portal: jurisprudencia.pj.gob.pe — RichFaces 4.2.2, requiere **VPN a Perú** (CyberGhost u otro).  
+Sin VPN → 403 en todos los workers → los JSONL se crean vacíos.  
+Esto ya pasó: un run con `--fresh-output` + VPN apagada destruyó todos los JSONL previos.  
+Los 6,221 PDFs sobrevivieron en `output/pjperu-districts/pdfs/`.
+
+### Cambios de esta sesión que debes conocer
+
+| Commit | Qué hace |
+|--------|----------|
+| `72a16bc` | Docs se acumulan en memoria → un solo `writeFileSync` al final. Elimina duplicados por crash. |
+| `33a4411` | maxSockets 64 (era 5 → 15 workers bloqueados). Resume solo usa `completed=true`. |
+| `cb2e3c0` | Cada run → carpeta `output/runs/YYYY-MM-DD-HHMM/`. PDFs en `output/pdfs/` compartido. `--fresh-output` eliminado. |
 
 ---
 
-## Your job
+## Tu trabajo
 
-### 1. Verify VPN
+### 1. Verificar VPN antes de cualquier cosa
+```bash
+curl -s https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml \
+  -o /dev/null -w "%{http_code}\n"
 ```
-curl -s https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml -o /dev/null -w "%{http_code}"
-```
-Must return `200`. If `403`, stop — do not proceed without VPN.
+- `200` → continuar
+- `403` → **detente**, conecta VPN a Perú, repite
 
-### 2. Run extraction
-```
+### 2. Correr la extracción completa
+```bash
 cd C:\Users\lanitaEmperadora\Desktop\pj-peru-scraper
 npm run build
-node scripts/parallel-districts.mjs --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 10 --concurrency 20
+npm run scrape:pjperu:districts
 ```
-- NO `--fresh-output` (would delete nothing now, but is a footgun)
-- NO `--resume` (all checkpoints are incomplete; new logic restarts from page 0 anyway)
-- Redirect stdout to a log file for monitoring: append `> output/run-$(date +%Y%m%d-%H%M).log 2>&1`
+Esto lanza 20 workers en paralelo, 34 distritos (buCorte=2 = Superior, ~458,909 docs).  
+Cada run crea su propia carpeta `output/runs/YYYY-MM-DD-HHMM/`.  
+Los PDFs van a `output/pdfs/` (compartido, idempotente).
 
-### 3. Monitor for problems
-Watch for these in the log:
-- `soft_block_abort` → district stopped early due to empty pages with hasNextPage=true
-- `429` events → reduce `--pdf-concurrency` to 5 and restart that district
-- District exits with code 1 → check stderr for the error type
+> Si quieres PDFs desde cero en el nuevo run, los 6,221 ya descargados se reutilizan automáticamente (skip por nombre de archivo).
 
-### 4. Validate after completion
+### 3. Monitorear
+Señales de run sano:
+```
+[18=LIMA] {"message":"Page scraped","page":"1/?","docsThisPage":10,...}
+```
+Señales de problema:
+- `ERR 403` en todos → VPN caída, matar y reconectar
+- `soft_block_abort` → distrito terminó temprano por páginas vacías con hasNextPage=true
+- `exit 1` en un distrito → revisar stderr, relanzar ese distrito solo (ver paso 5)
+
+### 4. Validar al terminar
 ```bash
 node -e "
 const fs = require('fs');
-const dir = 'output/pjperu-districts';
-const files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl'));
+const runs = fs.readdirSync('output/runs').sort();
+const lastRun = 'output/runs/' + runs[runs.length - 1];
+const files = fs.readdirSync(lastRun).filter(f => f.endsWith('.jsonl'));
 let total = 0;
 for (const f of files) {
-  const n = fs.readFileSync(dir+'/'+f,'utf8').trim().split('\n').filter(Boolean).length;
+  const n = fs.readFileSync(lastRun+'/'+f,'utf8').trim().split('\n').filter(Boolean).length;
   total += n;
   console.log(n.toString().padStart(7), f);
 }
-console.log('TOTAL:', total, '/ expected ~458909');
+console.log('TOTAL:', total, '/ esperado ~458909');
 "
 ```
 
-### 5. Handle failed districts
-If any district exits code 1 after the main run, re-run just that district:
-```
+### 5. Relanzar distritos fallidos
+```bash
+# Reemplaza <ID> y <NAME> con los valores del distrito fallido
 node dist/cli.js --site pj-peru --sector 2 --district <ID> \
-  --out output/pjperu-districts/district-<ID>-<NAME>.jsonl \
-  --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 5
+  --out output/runs/<CARPETA-RUN>/district-<ID>-<NAME>.jsonl \
+  --pdfs --pdf-dir output/pdfs --pdf-concurrency 5
 ```
 
-### 6. Merge + commit
-`parallel-districts.mjs` auto-merges into `output/pjperu-districts/all-districts.jsonl` when done.
-Commit the checkpoint files (`output/checkpoint_pj-peru_s2_d*.json`) as run evidence.
+### 6. Merge final
+`parallel-districts.mjs` hace el merge automático a `all-districts.jsonl` al terminar.  
+Verificar tamaño y hacer commit de los checkpoints como evidencia.
 
 ---
 
-## What NOT to do
-- Don't touch `src/scraper/scraper.ts`, `src/scraper/sectorScraper.ts`, `src/session/session.ts` — stable
-- Don't wipe `output/pjperu-districts/pdfs/` — 6,221 PDFs already there
-- Don't add `--fresh-output` to any command
-- Don't run without VPN — you'll just get 403 and wipe JSONL again
+## Lo que NO debes hacer
+- `--fresh-output` en ningún comando
+- Tocar `src/scraper/scraper.ts`, `src/scraper/sectorScraper.ts`, `src/session/session.ts` — estables
+- Borrar `output/pjperu-districts/pdfs/` — son los 6,221 PDFs previos (usa `output/pdfs/` para los nuevos)
+- Correr sin VPN
 
 ---
 
-## District map (34 total, sector 2 = Superior)
-IDs 1-9,10-18,19-29,30-31,38-39,41 → see scripts/parallel-districts.mjs DISTRICTS const
+## Mapa de distritos (34 total)
+Ver `scripts/parallel-districts.mjs` → const DISTRICTS. IDs: 1-18, 19-29, 30-31, 38, 39, 41.
