@@ -127,6 +127,9 @@ const downloadPagePdfs = async (
     }
   }
 
+  // Ensure the PDF directory exists even if it was deleted or never created mid-run.
+  fs.mkdirSync(pdfDir, { recursive: true });
+
   // Download all PDF candidates concurrently in batches of pdfConcurrency.
   // absorbCookies() in downloadJsfActionPdf is synchronous on promise resolution,
   // so Node.js single-thread guarantees no cookie-jar race condition.
