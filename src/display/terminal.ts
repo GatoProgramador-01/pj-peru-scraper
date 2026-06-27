@@ -12,7 +12,7 @@ export const runBanner = (
 ): void => {
   process.stdout.write('\n');
   hr('=');
-  process.stdout.write(`  ${siteName}\n`);
+  process.stdout.write(`  🐱 ${siteName}\n`);
   if (sectorLabel) process.stdout.write(`  Sector: ${sectorLabel}\n`);
   process.stdout.write(`  Salida : ${outputPath}\n`);
   if (limit !== null) process.stdout.write(`  Limite : ${limit.toLocaleString()} registros\n`);
@@ -31,7 +31,7 @@ export const sectorBanner = (
   const label = sectorName ?? sectorId ?? 'all';
   process.stdout.write('\n');
   hr('=');
-  process.stdout.write(`  SECTOR ${idx} de ${total} -- ${label}`);
+  process.stdout.write(`  😸 SECTOR ${idx} de ${total} -- ${label}`);
   if (totalRecords !== null) process.stdout.write(`  (${totalRecords.toLocaleString()} registros)`);
   process.stdout.write('\n');
   hr('=');
@@ -40,18 +40,18 @@ export const sectorBanner = (
 
 export const phaseStep = (msg: string): void => {
   if (isTTY) {
-    process.stdout.write(`  >> ${msg}...`);
+    process.stdout.write(`  🐾 ${msg}...`);
   } else {
-    process.stdout.write(`  >> ${msg}...\n`);
+    process.stdout.write(`  🐾 ${msg}...\n`);
   }
 };
 
 export const phaseOk = (msg: string, detail?: string): void => {
   const suffix = detail ? `  (${detail})` : '';
   if (isTTY) {
-    process.stdout.write(`\r  [OK] ${msg}${suffix}\n`);
+    process.stdout.write(`\r  😻 ${msg}${suffix}\n`);
   } else {
-    process.stdout.write(`  [OK] ${msg}${suffix}\n`);
+    process.stdout.write(`  😻 ${msg}${suffix}\n`);
   }
 };
 
