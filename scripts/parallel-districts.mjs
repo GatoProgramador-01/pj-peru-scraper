@@ -81,7 +81,7 @@ if (pdfs) mkdirSync(pdfDir, { recursive: true });
 
 const entries = Object.entries(DISTRICTS);
 console.log(`\n${'='.repeat(70)}`);
-console.log(`  🐱 District Parallel Scrape — pj-peru Superior (buCorte=2)`);
+console.log(`  District Parallel Scrape -- pj-peru Superior (buCorte=2)`);
 console.log(`  ${entries.length} distritos | max ${maxWorkers} workers simultáneos | PDFs: ${pdfs ? 'SI' : 'NO'}`);
 console.log(`${'='.repeat(70)}\n`);
 
@@ -103,7 +103,7 @@ const spawnDistrict = (id, name) => new Promise(resolve => {
   if (freshOutput) { cliArgs.push('--fresh-output'); }
 
   const pad = `[${(id + '=' + name).padEnd(20)}]`;
-  console.log(`  🐈 START ${pad} → ${outFile}`);
+  console.log(`  START ${pad} -> ${outFile}`);
 
   const proc = spawn('node', cliArgs, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   proc.stdout.setMaxListeners(0);
@@ -114,7 +114,7 @@ const spawnDistrict = (id, name) => new Promise(resolve => {
     buf.toString().split('\n').filter(Boolean).forEach(l => process.stderr.write(`${pad} ERR ${l}\n`)));
 
   proc.on('close', code => {
-    const icon = code === 0 ? '😻' : '❌';
+    const icon = code === 0 ? 'OK  ' : 'FAIL';
     console.log(`  ${icon} DONE  ${pad} exit ${code}`);
     results.push({ id, name, outFile, code });
     resolve();
@@ -144,7 +144,7 @@ console.log(`${'='.repeat(70)}\n`);
 
 if (!dryRun && ok.length > 0) {
   const mergedPath = `${outDir}/all-districts.jsonl`;
-  console.log(`  🐾 Merging → ${mergedPath}`);
+  console.log(`  >> Merging -> ${mergedPath}`);
   const writer = createWriteStream(mergedPath, { flags: 'w' });
   writer.setMaxListeners(0);
   for (const { outFile } of ok) {
@@ -155,6 +155,6 @@ if (!dryRun && ok.length > 0) {
   await new Promise(res => writer.on('finish', res));
   try {
     const kb = (statSync(mergedPath).size / 1024).toFixed(0);
-    console.log(`  😻 Merged: ${mergedPath} (${kb} KB)\n`);
+    console.log(`  OK Merged: ${mergedPath} (${kb} KB)\n`);
   } catch {}
 }
