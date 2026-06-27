@@ -56,7 +56,7 @@ const argv = await yargs(hideBin(process.argv))
   .option('pdf-concurrency', {
     type: 'number',
     default: Number(process.env.PDF_CONCURRENCY ?? 1),
-    describe: 'Direct PDF URL download concurrency. JSF action PDFs remain sequential.',
+    describe: 'Maximum concurrent PDF downloads per page.',
   })
   .option('fresh-output', {
     type: 'boolean',

@@ -91,7 +91,7 @@ export interface ScrapeOptions {
   profile: string | null;
   resume: boolean;         // true = load per-sector checkpoints; false = fresh start
   sectorId: string | null; // null = scrape all sectors; string = specific sector only
-  pdfConcurrency?: number; // direct PDF URL downloads only; JSF action PDFs remain sequential
+  pdfConcurrency?: number; // maximum concurrent PDF downloads per page
 }
 
 export interface Checkpoint {

@@ -141,8 +141,8 @@ const downloadPagePdfs = async (
     const results = await Promise.all(chunk.map(async ({ index, isJsf }) => ({
       index,
       result: isJsf
-        ? await downloadJsfActionPdf(session, config, viewState, rows[index].pdfJsfAction!, docs[index], pdfDir)
-        : await downloadPdf(session, docs[index], pdfDir),
+        ? await downloadJsfActionPdf(session, config, viewState, rows[index].pdfJsfAction!, docs[index], pdfDir, metrics)
+        : await downloadPdf(session, docs[index], pdfDir, config.timing.retryWaitMs, metrics),
     })));
     for (const { index, result } of results) {
       processPdfResult(docs[index], result, metrics, failedPdfs, pageStats);
