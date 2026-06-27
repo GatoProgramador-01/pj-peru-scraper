@@ -123,7 +123,7 @@ const spawnDistrict = (id, name) => new Promise(resolve => {
 
 // Concurrency pool with startup jitter:
 // Each slot waits slotIdx * 600ms + random(800ms) before its FIRST launch.
-// This spreads the initial thundering herd across ~12-20s instead of all hitting T=0.
+// This spreads 12 workers across ~8s, reducing concurrent search POSTs from 12 to ~6.
 const pool = Array.from({ length: Math.min(maxWorkers, entries.length) }, async (_, slotIdx) => {
   const jitterMs = slotIdx * 600 + Math.random() * 800;
   if (slotIdx > 0) await sleep(jitterMs);

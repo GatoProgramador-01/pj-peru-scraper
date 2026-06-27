@@ -29,8 +29,7 @@ export const SITES: Record<string, SiteConfig> = {
       noResults: '[id*="optResultado"]',
     },
     timing: {
-      // 300-700ms between pages keeps 12 concurrent workers from syncing up on AJAX pagination bursts.
-      pageDelayMs: [300, 700],
+      pageDelayMs: [0, 0],
       pdfDelayMs: [0, 0],
       retryWaitMs: [8000, 16000, 35000],
       navigationTimeoutMs: 45_000,
