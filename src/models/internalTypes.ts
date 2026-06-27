@@ -21,6 +21,13 @@ export interface ParsedRow {
   tipoRecurso?: string;
   sumilla?: string;
   palabrasClave?: string;
+  fallo?: string;
+  juecesRaw?: string;
+  proceso?: string;
+  distritoJudicialProcedencia?: string;
+  expedienteProcedencia?: string;
+  fechaResolucionProcedencia?: string;
+  falloProcedencia?: string;
 }
 
 export interface ParsedPage {

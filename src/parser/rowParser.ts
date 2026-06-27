@@ -26,6 +26,16 @@ const parseRichFacesRepeatRows = ($: $Root, baseUrl: string): ParsedRow[] => {
     const sala           = extractLabeledField($, body, 'Sala');
     const sumilla        = extractLabeledField($, body, 'Sumilla');
     const palabrasClave  = extractLabeledField($, body, 'Palabras Clave');
+    const fallo          = extractLabeledField($, body, 'Fallo de la Resolución');
+    const juecesRaw      = extractLabeledField($, body, 'Jueces');
+    const proceso        = extractLabeledField($, body, 'Proceso');
+    const distritoJudicialProcedencia = extractLabeledField($, body, 'Distrito Judicial de Procedencia');
+    const expedienteProcedencia       = extractLabeledField($, body, 'Expediente de Procedencia');
+    const fechaResolucionProcedencia  = extractLabeledField($, body, 'Fecha de Resolución de Procedencia');
+    // Exact match "Fallo:" from procedencia — avoids collision with "Fallo de la Resolución:"
+    const falloProcedencia = body.find('.txtbold')
+      .filter((_, el) => $(el).text().trim().replace(/:\s*$/, '') === 'Fallo')
+      .first().next().text().trim();
 
     const pdfAnchor = $el.find('a[href*="ServletDescarga"]').first();
     const rawHref = pdfAnchor.attr('href') ?? null;
@@ -34,7 +44,13 @@ const parseRichFacesRepeatRows = ($: $Root, baseUrl: string): ParsedRow[] => {
       : null;
 
     const cells = [tipoRecurso, expediente, pretension, tipoResolucion, fechaResolucion, sala, sumilla];
-    return { cells, pdfUrl, pdfJsfAction: null, tipoRecurso, sumilla, palabrasClave } satisfies ParsedRow;
+    return {
+      cells, pdfUrl, pdfJsfAction: null,
+      tipoRecurso, sumilla, palabrasClave,
+      fallo, juecesRaw, proceso,
+      distritoJudicialProcedencia, expedienteProcedencia,
+      fechaResolucionProcedencia, falloProcedencia,
+    } satisfies ParsedRow;
   }).filter(row => row.cells.some(c => c.length > 0));
 };
 

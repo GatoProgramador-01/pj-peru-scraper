@@ -10,10 +10,18 @@ export interface JudicialDocument {
   date: string | null;     // ISO date or resolution number
   summary: string | null;  // Pretensión/Delito (pj-peru) or Administrado (oefa)
   resolution: string | null;
-  // pj-peru specific fields
+  // pj-peru specific fields — main panel
   tipoRecurso: string | null;    // Apelación, Casación, etc.
   sumilla: string | null;        // Sumilla text (distinct from summary/pretensión)
   palabrasClave: string | null;  // Palabras Clave from panel body
+  // pj-peru ficha fields — embedded in same panel, shown in "Ver Ficha" modal
+  fallo: string | null;                       // Fallo de la Resolución (Confirmada, Revocada, etc.)
+  jueces: string[] | null;                    // Lista de jueces
+  proceso: string | null;                     // Tipo de proceso (Conocimiento, Investigación Penal, etc.)
+  distritoJudicialProcedencia: string | null; // Distrito de origen del expediente
+  expedienteProcedencia: string | null;       // Número de expediente de primera instancia
+  fechaResolucionProcedencia: string | null;  // Fecha de la resolución de procedencia
+  falloProcedencia: string | null;            // Fallo de la instancia anterior
   pdfUrl: string | null;   // Absolute URL to PDF (null if confidential or JS-only)
   pdfLocalPath: string | null;
   pageIndex: number;       // 0-based page number where found
