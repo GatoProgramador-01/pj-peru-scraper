@@ -203,7 +203,7 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
 
   // ── Run metrics ────────────────────────────────────────────────────────────
   const elapsedMs = Date.now() - runStart;
-  const { elapsedMin, totalPdfCompleted, avgPdfLatencyMs, docsPerMinute, pdfsPerMinute } = calcRunStats(metrics, elapsedMs);
+  const { avgPdfLatencyMs, docsPerMinute, pdfsPerMinute } = calcRunStats(metrics, elapsedMs);
 
   logger.info('Run metrics', {
     totalDocumentsCollected: metrics.totalDocumentsCollected,
