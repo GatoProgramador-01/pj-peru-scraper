@@ -2,8 +2,6 @@
 
 Scraper HTTP en TypeScript para portales JSF peruanos. Usa axios + Cheerio, no automatiza navegador. Soporta OEFA (PrimeFaces) y PJ Peru (RichFaces), con paginacion JSF, checkpoints, salida JSONL y descarga opcional de PDFs.
 
-Este README es la primera lectura. El detalle operativo para reviewers esta en [`docs/reviewer-runbook.md`](docs/reviewer-runbook.md).
-
 ## Contexto Rapido
 
 El proyecto busca probar que el scraper corre de punta a punta:
@@ -15,7 +13,7 @@ El proyecto busca probar que el scraper corre de punta a punta:
 - registra fallos recuperables sin truncar silenciosamente;
 - corre en paralelo mediante comandos npm.
 
-Evidencia actual: en una corrida real de Suprema por anio con VPN peruana, el scraper sostuvo cerca de una hora de extraccion, llego a ~43,750 documentos combinando run principal + retry, y demostro que los soft-blocks son contencion del pool JSF, no HTTP 429. Ver [`docs/reviewer-runbook.md`](docs/reviewer-runbook.md).
+Evidencia actual: en una corrida real de Suprema por anio con VPN peruana, el scraper sostuvo cerca de una hora de extraccion, llego a ~43,750 documentos combinando run principal + retry, y demostro que los soft-blocks son contencion del pool JSF, no HTTP 429.
 
 ## Quick Start
 
@@ -136,7 +134,6 @@ grep "soft_block" output/pjperu-*/page-events.jsonl
 # {"type":"soft_block_abort","sectorId":"2026","pageIndex":4,"docsThisPage":0,...}
 ```
 
-Ver [`docs/reviewer-runbook.md`](docs/reviewer-runbook.md) seccion "Soft-Block" para el analisis completo del caso real.
 
 ### Paso 6 — Verificar logica de 429 contra portal real (opcional)
 
@@ -237,7 +234,6 @@ Para validar la logica de retry sin necesitar ningun portal:
 npm run verify:local
 ```
 
-La politica completa con el analisis del caso real esta en [`docs/reviewer-runbook.md`](docs/reviewer-runbook.md).
 
 ## Artefactos De Ejecucion
 

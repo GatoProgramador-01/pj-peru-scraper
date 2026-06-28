@@ -9,3 +9,4 @@ chrome-profile/
 .env.*
 !.env.example
 CLAUDE.local.md
+.claude/worktrees/
