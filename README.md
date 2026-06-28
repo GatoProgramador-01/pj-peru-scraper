@@ -120,6 +120,24 @@ npm run scrape:pjperu:districts:test       # 34 distritos + PDFs, ~25 min
 
 Estos son los tests de integracion completos. Producen documentos reales, PDFs descargados y reportes en `output/`.
 
+**Feature clave a verificar — soft-block detection:**
+
+En las corridas reales de PJ Peru no se observo HTTP 429. Lo que si ocurrio fue su
+equivalente: el portal devolvio HTTP 200 con AJAX vacio durante paginas consecutivas
+(soft-block por contencion del pool JSF). El scraper lo detecta y lo registra.
+
+Despues de correr `years:test`, verificar:
+
+```bash
+# Si hubo soft-blocks, aparecen en page-events:
+grep "soft_block" output/pjperu-*/page-events.jsonl
+
+# El evento tiene esta forma:
+# {"type":"soft_block_abort","sectorId":"2026","pageIndex":4,"docsThisPage":0,...}
+```
+
+Ver [`docs/reviewer-runbook.md`](docs/reviewer-runbook.md) seccion "Soft-Block" para el analisis completo del caso real.
+
 ### Paso 6 — Verificar logica de 429 contra portal real (opcional)
 
 ```bash
@@ -187,28 +205,39 @@ PDF_CONCURRENCY=4 npm run scrape:oefa:test100
 
 Todas las variables tienen valores por defecto — el scraper funciona sin `.env`. Ver `.env.example` para la lista completa con descripciones.
 
-## Politica De Retry
+## Politica De Retry Y Caso Real Encontrado
 
-Hay dos casos distintos:
+El scraper maneja dos familias de error de disponibilidad:
 
 | Caso | Como se detecta | Que hace el scraper |
 | --- | --- | --- |
-| HTTP 429 o timeout | Error HTTP/request | `withRetry()` reintenta hasta 3 veces con jitter |
-| Soft-block JSF | 3 paginas AJAX vacias seguidas | Registra `soft_block_abort`, guarda checkpoint y permite `--resume` |
+| HTTP 429 o timeout | Excepcion HTTP | `withRetry()` reintenta hasta 3 veces con jitter exponencial |
+| Soft-block JSF | 3 HTTP 200 con AJAX vacio seguidos | Registra `soft_block_abort`, guarda checkpoint, permite `--resume` |
 
-Para validar la logica sin red:
+**El caso real encontrado en produccion fue el soft-block, no el 429.**
+
+En las corridas de PJ Peru Suprema con 12 workers en paralelo, el portal devolvio HTTP 200
+con cuerpo AJAX vacio en lugar de un codigo de error explicito. Es el equivalente funcional
+del 429: el portal deja de entregar datos silenciosamente porque los workers compiten por
+el mismo ViewState del pool JSF.
+
+El scraper lo detecta, lo registra y no trunca el resultado:
 
 ```bash
-npm run simulate:429
-```
+# Ver eventos de soft-block en una corrida real:
+grep "soft_block" output/*/page-events.jsonl
 
-Para retry de Suprema sin contencion del pool JSF:
-
-```bash
+# Reanudar con un solo worker para eliminar la contencion:
 npm run scrape:pjperu:suprema:years:retry
 ```
 
-La politica completa esta en [`docs/reviewer-runbook.md`](docs/reviewer-runbook.md).
+Para validar la logica de retry sin necesitar ningun portal:
+
+```bash
+npm run verify:local
+```
+
+La politica completa con el analisis del caso real esta en [`docs/reviewer-runbook.md`](docs/reviewer-runbook.md).
 
 ## Artefactos De Ejecucion
 

@@ -78,21 +78,44 @@ npm run scrape:pjperu:suprema:years:retry
 
 `simulate:429` prueba la logica sin depender del portal real. `years:retry` corre con concurrencia 1 para eliminar contencion de ViewState.
 
-## Soft-Block No Es HTTP 429
+## Soft-Block: El Caso Real Encontrado (Equivalente A HTTP 429)
 
-PJ Peru puede devolver HTTP 200 con respuesta AJAX parcial vacia. Si el scraper aceptara eso como pagina vacia, truncaria resultados. Por eso `sectorScraper.ts` aborta despues de 3 paginas vacias consecutivas.
+Durante las corridas reales de PJ Peru Suprema no se observo ningun HTTP 429.
+Lo que si se observo fue su equivalente funcional: el portal devolvio HTTP 200 con
+cuerpo AJAX vacio en paginas consecutivas, sin ningun codigo de error.
 
-El evento esperado queda en `page-events.jsonl`:
+Este comportamiento se llama soft-block y es la forma en que PJ Peru (RichFaces) expresa
+contencion del pool JSF cuando hay muchos workers compitiendo por el mismo ViewState.
+El efecto es identico al 429: el portal deja de entregar datos, pero lo hace silenciosamente.
 
-```text
-soft_block_abort
+**Por que es un problema si no se detecta:** si el scraper aceptara un 200-con-AJAX-vacio
+como pagina sin resultados, truncaria el run sin ningun error visible. Los documentos
+restantes se perderian y el output pareceria completo.
+
+**Como lo maneja el scraper:** `sectorScraper.ts` cuenta las paginas vacias consecutivas.
+Al llegar a 3 (`CONSECUTIVE_EMPTY_ABORT`), registra `soft_block_abort`, guarda checkpoint
+y termina el sector. El runner puede retomarlo con `--resume`.
+
+Para verificar que esto ocurrio en un run, buscar en `page-events.jsonl`:
+
+```bash
+grep "soft_block" output/*/page-events.jsonl
 ```
 
-Despues se usa el checkpoint:
+El evento queda registrado asi:
+
+```json
+{"type":"soft_block_abort","sectorId":"2026","pageIndex":4,"docsThisPage":0,...}
+```
+
+Para reanudar los sectores que quedaron incompletos por soft-block:
 
 ```bash
 npm run scrape:pjperu:suprema:years:retry
 ```
+
+`years:retry` baja la concurrencia a 1 worker para eliminar la contencion de ViewState,
+que es la causa raiz del soft-block en corridas paralelas.
 
 ## Paralelizacion Por Anio
 
