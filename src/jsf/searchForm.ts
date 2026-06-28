@@ -10,6 +10,9 @@ import { absorbCookies, cookieHeader } from '../session/cookies.js';
 import { isRateLimited } from '../session/rateLimit.js';
 import { extractPartialResponse } from './partialResponse.js';
 
+const encodeFormBody = (params: [string, string][]): string =>
+  params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+
 const appendSearchOverrides = (
   params: [string, string][],
   sectorField: string | undefined,
@@ -21,15 +24,8 @@ const appendSearchOverrides = (
   if (searchFields) params.push(...Object.entries(searchFields));
 };
 
-export const submitSearch = async (
-  session: Session,
-  target: SearchTarget,
-  filter: SearchFilter = {},
-): Promise<ParsedPage> => {
-  const { url, page, config } = target;
-  if (!config.search) return page;
-
-  const { buttonId, buttonValue, formId, fields, ajax, sectorField } = config.search;
+const logSearchSubmit = (target: SearchTarget, filter: SearchFilter): void => {
+  const { buttonId, ajax } = target.config.search!;
   logger.info('Submitting search form', {
     buttonId,
     ajax,
@@ -37,83 +33,141 @@ export const submitSearch = async (
     districtId: filter.districtId ?? 'none',
     searchFields: filter.searchFields ?? {},
   });
+};
 
-  let params: [string, string][];
-  let extraHeaders: Record<string, string>;
+const buildAjaxSearchParams = (target: SearchTarget, filter: SearchFilter): [string, string][] => {
+  const { page, config } = target;
+  const { buttonId, formId, fields, sectorField } = config.search!;
+  const params: [string, string][] = [
+    ['javax.faces.partial.ajax', 'true'],
+    ['javax.faces.source', buttonId],
+    ['javax.faces.partial.execute', formId],
+    ['javax.faces.partial.render', formId],
+    [formId, formId],
+    ...Object.entries(fields),
+  ];
+  appendSearchOverrides(params, sectorField, filter);
+  params.push(['javax.faces.ViewState', page.viewState]);
+  return params;
+};
 
-  if (ajax) {
-    params = [
-      ['javax.faces.partial.ajax', 'true'],
-      ['javax.faces.source', buttonId],
-      ['javax.faces.partial.execute', formId],
-      ['javax.faces.partial.render', formId],
-      [formId, formId],
-      ...Object.entries(fields),
-    ];
-    appendSearchOverrides(params, sectorField, filter);
-    params.push(['javax.faces.ViewState', page.viewState]);
-    extraHeaders = { 'Faces-Request': 'partial/ajax', 'X-Requested-With': 'XMLHttpRequest' };
-  } else {
-    params = [
-      [formId, formId],
-      ...Object.entries(fields),
-    ];
-    appendSearchOverrides(params, sectorField, filter);
-    params.push([buttonId, buttonValue], ['javax.faces.ViewState', page.viewState]);
-    extraHeaders = {};
-  }
+const buildClassicSearchParams = (target: SearchTarget, filter: SearchFilter): [string, string][] => {
+  const { page, config } = target;
+  const { buttonId, buttonValue, formId, fields, sectorField } = config.search!;
+  const params: [string, string][] = [
+    [formId, formId],
+    ...Object.entries(fields),
+  ];
+  appendSearchOverrides(params, sectorField, filter);
+  params.push([buttonId, buttonValue], ['javax.faces.ViewState', page.viewState]);
+  return params;
+};
 
-  const body = params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+const buildSearchBody = (target: SearchTarget, filter: SearchFilter): string =>
+  encodeFormBody(
+    target.config.search!.ajax
+      ? buildAjaxSearchParams(target, filter)
+      : buildClassicSearchParams(target, filter),
+  );
 
-  // For sites that redirect after search (e.g. pj-peru: inicio.xhtml → resultado.xhtml),
-  // suppress auto-redirect so we can upgrade the HTTP location to HTTPS before following.
-  const needsRedirectUpgrade = Boolean(config.resultsUrl);
-  const resp: AxiosResponse<string> = await session.client.post(url, body, {
+const ajaxHeaders = (target: SearchTarget): Record<string, string> =>
+  target.config.search!.ajax
+    ? { 'Faces-Request': 'partial/ajax', 'X-Requested-With': 'XMLHttpRequest' }
+    : {};
+
+const shouldCaptureRedirect = (target: SearchTarget): boolean =>
+  Boolean(target.config.resultsUrl);
+
+const postSearchForm = (
+  session: Session,
+  target: SearchTarget,
+  body: string,
+): Promise<AxiosResponse<string>> =>
+  session.client.post(target.url, body, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'Referer': url,
+      'Referer': target.url,
       'Cookie': cookieHeader(session),
-      ...extraHeaders,
+      ...ajaxHeaders(target),
     },
-    ...(needsRedirectUpgrade ? { maxRedirects: 0, validateStatus: (s: number) => s < 400 } : {}),
+    ...(shouldCaptureRedirect(target) ? { maxRedirects: 0, validateStatus: (s: number) => s < 400 } : {}),
   });
 
+const isRedirectResponse = (resp: AxiosResponse<string>): boolean =>
+  resp.status === 301 || resp.status === 302 || resp.status === 303;
+
+const redirectLocation = (resp: AxiosResponse<string>): string => {
+  const location = resp.headers['location'] as string | undefined;
+  if (!location) throw new Error('Search redirect missing Location header');
+  return location;
+};
+
+const forceHttpsRedirect = (location: string): string =>
+  location.replace(/^http:\/\//i, 'https://');
+
+const stripUrlState = (url: string): string =>
+  url.split('?')[0].split(';')[0];
+
+const followSearchRedirect = async (
+  session: Session,
+  target: SearchTarget,
+  location: string,
+): Promise<ParsedPage> => {
+  const httpsLocation = forceHttpsRedirect(location);
+  logger.info('Following search redirect', { from: location, to: httpsLocation });
+  const resp: AxiosResponse<string> = await session.client.get(httpsLocation, {
+    headers: { 'Cookie': cookieHeader(session), 'Referer': target.url },
+  });
+  absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
+  if (isRateLimited(resp.data)) throw new Error('Rate limited on search redirect follow');
+  const parsed = parsePage(cheerioLoad(resp.data), target.config, target.config.baseUrl);
+  return { ...parsed, activeUrl: stripUrlState(httpsLocation) };
+};
+
+const handleSearchRedirect = (
+  session: Session,
+  target: SearchTarget,
+  resp: AxiosResponse<string>,
+): Promise<ParsedPage> | null =>
+  shouldCaptureRedirect(target) && isRedirectResponse(resp)
+    ? followSearchRedirect(session, target, redirectLocation(resp))
+    : null;
+
+const parseAjaxSearchResponse = (target: SearchTarget, xml: string): ParsedPage => {
+  const { page, config } = target;
+  const { html, newViewState } = extractPartialResponse(xml);
+  const $p = cheerioLoad(html ?? '<div></div>');
+  const pag = parsePaginatorText($p);
+  return {
+    ...page,
+    viewState: newViewState ?? page.viewState,
+    rows: parseRows($p, config, config.baseUrl),
+    hasNextPage: pageHasNext($p),
+    currentPage: pag?.currentPage ?? currentPageNum($p),
+    totalPages: pag?.totalPages ?? page.totalPages,
+    totalRecords: pag?.totalRecords ?? page.totalRecords,
+  };
+};
+
+const parseSearchResponse = (target: SearchTarget, html: string): ParsedPage =>
+  target.config.search!.ajax
+    ? parseAjaxSearchResponse(target, html)
+    : parsePage(cheerioLoad(html), target.config, target.config.baseUrl);
+
+export const submitSearch = async (
+  session: Session,
+  target: SearchTarget,
+  filter: SearchFilter = {},
+): Promise<ParsedPage> => {
+  if (!target.config.search) return target.page;
+
+  logSearchSubmit(target, filter);
+  const resp = await postSearchForm(session, target, buildSearchBody(target, filter));
   absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
 
-  // Handle 302 redirect → upgrade http→https and follow manually
-  const isRedirect = resp.status === 301 || resp.status === 302 || resp.status === 303;
-  if (needsRedirectUpgrade && isRedirect) {
-    const location = resp.headers['location'] as string | undefined;
-    if (!location) throw new Error('Search redirect missing Location header');
-    const httpsLocation = location.replace(/^http:\/\//i, 'https://');
-    logger.info('Following search redirect', { from: location, to: httpsLocation });
-    const r2: AxiosResponse<string> = await session.client.get(httpsLocation, {
-      headers: { 'Cookie': cookieHeader(session), 'Referer': url },
-    });
-    absorbCookies(session, r2.headers['set-cookie'] as string[] | undefined);
-    if (isRateLimited(r2.data)) throw new Error('Rate limited on search redirect follow');
-    const $full = cheerioLoad(r2.data);
-    const parsed = parsePage($full, config, config.baseUrl);
-    return { ...parsed, activeUrl: httpsLocation.split('?')[0].split(';')[0] };
-  }
+  const redirectedPage = await handleSearchRedirect(session, target, resp);
+  if (redirectedPage) return redirectedPage;
 
   if (isRateLimited(resp.data)) throw new Error('Rate limited on search submit');
-
-  if (ajax) {
-    const { html, newViewState } = extractPartialResponse(resp.data);
-    const $p = cheerioLoad(html ?? '<div></div>');
-    const pag = parsePaginatorText($p);
-    return {
-      ...page,
-      viewState: newViewState ?? page.viewState,
-      rows: parseRows($p, config, config.baseUrl),
-      hasNextPage: pageHasNext($p),
-      currentPage: pag?.currentPage ?? currentPageNum($p),
-      totalPages: pag?.totalPages ?? page.totalPages,
-      totalRecords: pag?.totalRecords ?? page.totalRecords,
-    };
-  }
-
-  const $full = cheerioLoad(resp.data);
-  return parsePage($full, config, config.baseUrl);
+  return parseSearchResponse(target, resp.data);
 };

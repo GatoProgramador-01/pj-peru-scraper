@@ -6,10 +6,21 @@ import { absorbCookies, cookieHeader } from '../session/cookies.js';
 import { isRateLimited } from '../session/rateLimit.js';
 import { extractPartialResponse } from './partialResponse.js';
 
-export const buildPaginationBody = (page: ParsedPage, targetPageIndex: number, rowsPerPage: number): string => {
+const encodeFormBody = (params: [string, string][]): string =>
+  params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+
+const dataTableIdFromPaginator = (page: ParsedPage): string => {
   const paginatorId = page.paginatorId ?? `${page.formId}:j_idt_paginator`;
-  const dataTableId = paginatorId.replace(/_paginator(?:_[^:]+)?$/, '');
-  const params: [string, string][] = [
+  return paginatorId.replace(/_paginator(?:_[^:]+)?$/, '');
+};
+
+const primeFacesPaginationParams = (
+  page: ParsedPage,
+  targetPageIndex: number,
+  rowsPerPage: number,
+): [string, string][] => {
+  const dataTableId = dataTableIdFromPaginator(page);
+  return [
     ['javax.faces.partial.ajax', 'true'],
     ['javax.faces.source', dataTableId],
     ['javax.faces.partial.execute', dataTableId],
@@ -22,13 +33,17 @@ export const buildPaginationBody = (page: ParsedPage, targetPageIndex: number, r
     [`${dataTableId}_encodeFeature`, 'true'],
     ['javax.faces.ViewState', page.viewState],
   ];
-  return params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 };
 
-/** RichFaces data-scroller pagination (pj-peru). Sends page number via spinner. */
-export const buildRichFacesPaginationBody = (page: ParsedPage, targetPageIndex: number): string => {
-  const scroller = 'formBuscador:data1';
-  const params: [string, string][] = [
+export const buildPaginationBody = (page: ParsedPage, targetPageIndex: number, rowsPerPage: number): string =>
+  encodeFormBody(primeFacesPaginationParams(page, targetPageIndex, rowsPerPage));
+
+const richFacesDataScroller = (): string =>
+  'formBuscador:data1';
+
+const richFacesPaginationParams = (page: ParsedPage, targetPageIndex: number): [string, string][] => {
+  const scroller = richFacesDataScroller();
+  return [
     ['javax.faces.partial.ajax', 'true'],
     ['javax.faces.source', scroller],
     ['javax.faces.partial.execute', scroller],
@@ -40,21 +55,28 @@ export const buildRichFacesPaginationBody = (page: ParsedPage, targetPageIndex: 
     [`${scroller}:page`, String(targetPageIndex + 1)],
     ['javax.faces.ViewState', page.viewState],
   ];
-  return params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 };
 
-export const fetchNextPage = async (
-  session: Session,
-  url: string,
-  req: PaginationRequest,
-): Promise<{ $: $Root; newViewState: string | null }> => {
+/** RichFaces data-scroller pagination (pj-peru). Sends page number via spinner. */
+export const buildRichFacesPaginationBody = (page: ParsedPage, targetPageIndex: number): string =>
+  encodeFormBody(richFacesPaginationParams(page, targetPageIndex));
+
+const paginationPostUrl = (fallbackUrl: string, page: ParsedPage): string =>
+  page.activeUrl ?? fallbackUrl;
+
+const buildPaginationRequestBody = (req: PaginationRequest): string => {
   const { page, targetPageIndex, rowsPerPage, useRichFaces = false } = req;
-  const postUrl = page.activeUrl ?? url;
-  const body = useRichFaces
+  return useRichFaces
     ? buildRichFacesPaginationBody(page, targetPageIndex)
     : buildPaginationBody(page, targetPageIndex, rowsPerPage);
+};
 
-  const resp: AxiosResponse<string> = await session.client.post(postUrl, body, {
+const postPaginationRequest = (
+  session: Session,
+  postUrl: string,
+  body: string,
+): Promise<AxiosResponse<string>> =>
+  session.client.post(postUrl, body, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       'Faces-Request': 'partial/ajax',
@@ -64,17 +86,42 @@ export const fetchNextPage = async (
     },
   });
 
-  absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
-  if (isRateLimited(resp.data)) throw new Error(`Rate limited at page ${targetPageIndex}`);
+const assertNotRateLimited = (html: string, targetPageIndex: number): void => {
+  if (isRateLimited(html)) throw new Error(`Rate limited at page ${targetPageIndex}`);
+};
 
-  const { html, newViewState } = extractPartialResponse(resp.data);
+const requirePartialHtml = (html: string | null, targetPageIndex: number): string => {
   if (!html) {
-    // Throw so withRetry retries the AJAX request — falling back to a full GET returns
-    // the empty search form (0 rows) which silently truncates the run.
-    throw new Error(`Partial AJAX response empty at page ${targetPageIndex} — retrying`);
+    // Throw so withRetry retries the AJAX request: falling back to a full GET
+    // returns the empty search form (0 rows) and silently truncates the run.
+    throw new Error(`Partial AJAX response empty at page ${targetPageIndex} - retrying`);
   }
-  const fragment = html.trim().startsWith('<tr')
+  return html;
+};
+
+const wrapLooseTableRows = (html: string): string =>
+  html.trim().startsWith('<tr')
     ? `<table><tbody>${html}</tbody></table>`
     : html;
+
+const parsePaginationPartial = (
+  xml: string,
+  targetPageIndex: number,
+): { $: $Root; newViewState: string | null } => {
+  const { html, newViewState } = extractPartialResponse(xml);
+  const fragment = wrapLooseTableRows(requirePartialHtml(html, targetPageIndex));
   return { $: cheerioLoad(fragment), newViewState };
+};
+
+export const fetchNextPage = async (
+  session: Session,
+  url: string,
+  req: PaginationRequest,
+): Promise<{ $: $Root; newViewState: string | null }> => {
+  const postUrl = paginationPostUrl(url, req.page);
+  const resp = await postPaginationRequest(session, postUrl, buildPaginationRequestBody(req));
+
+  absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
+  assertNotRateLimited(resp.data, req.targetPageIndex);
+  return parsePaginationPartial(resp.data, req.targetPageIndex);
 };
