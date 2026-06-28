@@ -163,12 +163,17 @@ npm run scrape:pjperu:suprema:years:test   # 4 años × 500 docs en ~5 min
 
 ### PJ Peru — Corte Superior (con PDFs)
 
+Run validado 2026-06-27: `npm run scrape:pjperu:districts:test` — 34 distritos, 12 workers, límite 500 docs/distrito.
+
 | Métrica | Valor |
 | --- | --- |
-| Workers simultáneos | 12 (34 distritos en 3 rondas) |
-| Velocidad por worker | 38–62 docs/min (incluye descarga PDF) |
-| PDFs descargados | 2,600+ en el run de sesión |
+| Workers simultáneos | 12 de 34 distritos |
+| Distritos completados | 19/34 OK — 15 soft-block (pool ViewState, recuperables con `--resume --concurrency 1`) |
+| Velocidad pico por worker | 62 docs/min con PDFs incluidos |
+| PDFs descargados | 499 en 25m56s |
+| JSONL fusionado | 12.5 MB (`all-districts.jsonl`) |
 | 429 detectados | 0 |
+| Tiempo total | 25m56s |
 
 ### OEFA (con PDFs JSF POST)
 

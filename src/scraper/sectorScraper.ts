@@ -34,6 +34,49 @@ export interface SectorContext {
   runLimit: number | null;
 }
 
+// ─── Module-level constants ───────────────────────────────────────────────────
+
+const CONSECUTIVE_EMPTY_ABORT = 3;
+
+// ─── Pure helper functions ────────────────────────────────────────────────────
+
+const elapsedSince = (startMs: number): string => {
+  const sec = Math.round((Date.now() - startMs) / 1000);
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
+};
+
+const hasReachedDocLimit = (total: number, limit: number | null): boolean =>
+  limit !== null && total >= limit;
+
+const isSoftBlock = (hasNext: boolean, pageIndex: number): boolean =>
+  hasNext && pageIndex > 0;
+
+const shouldDownloadPdfs = (pdfDir: string | null | undefined, dryRun: boolean): boolean =>
+  Boolean(pdfDir) && !dryRun;
+
+const richFacesMissingNextButton = (page: ParsedPage): boolean =>
+  !page.hasNextPage && page.totalPages === null && page.rows.length >= ROWS_PER_PAGE;
+
+const paginatorHidTotalPages = (page: ParsedPage): boolean =>
+  page.totalRecords !== null && page.totalPages === null;
+
+interface PageMetrics { docsPerMin: number | null; pagesPerMin: number | null; pdfRate: number }
+
+const calcPageMetrics = (
+  totalScraped: number,
+  pageIndex: number,
+  elapsedMs: number,
+  pagePdfMs: number,
+  pdfCompleted: number,
+): PageMetrics => {
+  const elapsedSec = elapsedMs / 1000;
+  const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
+  const pagesPerMin = elapsedSec > 5 ? Math.round(((pageIndex + 1) / elapsedSec) * 60 * 10) / 10 : null;
+  const pagePdfSec = Math.max(1, pagePdfMs / 1000);
+  const pdfRate = Math.round((pdfCompleted / pagePdfSec) * 60);
+  return { docsPerMin, pagesPerMin, pdfRate };
+};
+
 // ─── Pagination helpers ───────────────────────────────────────────────────────
 
 const resolveHasNextPage = (
@@ -122,11 +165,6 @@ export const scrapeSector = async (
   let pageIndex = 0;
   const sectorStart = Date.now();
 
-  const elapsed = (): string => {
-    const sec = Math.round((Date.now() - sectorStart) / 1000);
-    return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
-  };
-
   // ── Bootstrap ──────────────────────────────────────────────────────────────
   display.phaseStep('Bootstrap session');
   const $initial = await withRetry(
@@ -135,7 +173,7 @@ export const scrapeSector = async (
     `bootstrap-sector-${sectorId}`,
     metrics,
   );
-  display.phaseOk('Session ready', elapsed());
+  display.phaseOk('Session ready', elapsedSince(sectorStart));
   let page = parsePage($initial, config, config.baseUrl);
 
   // ── Search submit ──────────────────────────────────────────────────────────
@@ -154,27 +192,25 @@ export const scrapeSector = async (
 
     // RichFaces AJAX partial responses never include the DataScroller config script,
     // so totalPages must be derived from totalRecords on the initial full-page load.
-    const paginatorHidTotalPages = page.totalRecords !== null && page.totalPages === null;
-    if (paginatorHidTotalPages) {
+    if (paginatorHidTotalPages(page)) {
       page = { ...page, totalPages: Math.ceil(page.totalRecords! / ROWS_PER_PAGE) };
     }
 
     display.phaseOk(
       'Search complete',
-      `${page.totalRecords ?? '?'} records · ${page.totalPages ?? '?'} pages · ${elapsed()}`,
+      `${page.totalRecords ?? '?'} records · ${page.totalPages ?? '?'} pages · ${elapsedSince(sectorStart)}`,
     );
 
     // Portals like pj-peru (RichFaces) don't render paginator buttons on initial GET —
     // if hasNextPage is false but we got a full page and totalPages is unknown, assume more.
-    const richFacesMissingNextButton = !page.hasNextPage && page.totalPages === null && page.rows.length >= ROWS_PER_PAGE;
-    if (richFacesMissingNextButton) page = { ...page, hasNextPage: true };
+    if (richFacesMissingNextButton(page)) page = { ...page, hasNextPage: true };
 
     logger.info('Search submitted - first page received', {
       sector: `${sectorId}=${sectorName}`,
       rowsFound: page.rows.length,
       totalRecords: page.totalRecords ?? '?',
       totalPages: page.totalPages ?? '?',
-      elapsed: elapsed(),
+      elapsed: elapsedSince(sectorStart),
     });
 
     if (page.rows.length === 0) {
@@ -184,18 +220,15 @@ export const scrapeSector = async (
   }
 
   // ── Pagination loop ────────────────────────────────────────────────────────
-  const CONSECUTIVE_EMPTY_ABORT = 3;
   let consecutiveEmptyPages = 0;
 
   while (true) {
-    const hitDocLimit = limit !== null && totalScraped >= limit;
-    if (hitDocLimit) { logger.info('Limit reached', { limit }); break; }
+    if (hasReachedDocLimit(totalScraped, limit)) { logger.info('Limit reached', { limit }); break; }
 
     const docs = page.rows.map(rowToDocument({ site, pageIndex, columns: config.columns, sectorId, sectorName }));
 
     if (docs.length === 0) {
-      const isSoftBlock = page.hasNextPage && pageIndex > 0;
-      if (!isSoftBlock) {
+      if (!isSoftBlock(page.hasNextPage, pageIndex)) {
         logger.info('Empty page - end of results', { sectorId, pageIndex });
         break;
       }
@@ -212,7 +245,7 @@ export const scrapeSector = async (
         totalRecords: page.totalRecords,
         pdfDownloadedThisPage: 0, pdfFailedThisPage: 0, pdfMissingThisPage: 0,
         pdfConfidentialThisPage: 0, pdfSkippedExistingThisPage: 0,
-        elapsed: elapsed(), createdAt: new Date().toISOString(),
+        elapsed: elapsedSince(sectorStart), createdAt: new Date().toISOString(),
       });
 
       if (reachedAbortThreshold) break;
@@ -230,9 +263,8 @@ export const scrapeSector = async (
     const toWrite = limit !== null ? docs.slice(0, limit - totalScraped) : docs;
 
     // ── PDF download stage ─────────────────────────────────────────────────
-    const shouldDownloadPdfs = Boolean(pdfDir) && !dryRun;
     const pagePdfStartedAt = Date.now();
-    const pagePdfStats = shouldDownloadPdfs
+    const pagePdfStats = shouldDownloadPdfs(pdfDir, dryRun)
       ? await downloadPagePdfs(
           session,
           config,
@@ -253,13 +285,11 @@ export const scrapeSector = async (
     totalScraped += toWrite.length;
     metrics.totalDocumentsCollected += toWrite.length;
 
-    const elapsedSec = (Date.now() - sectorStart) / 1000;
-    const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
-    const pagesPerMin = elapsedSec > 5 ? Math.round(((pageIndex + 1) / elapsedSec) * 60 * 10) / 10 : null;
     const remaining = page.totalRecords != null ? page.totalRecords - totalScraped : null;
-    const pagePdfSec = Math.max(1, (Date.now() - pagePdfStartedAt) / 1000);
     const pdfCompleted = pagePdfStats.pdfDownloadedThisPage + pagePdfStats.pdfSkippedExistingThisPage;
-    const pdfRate = Math.round((pdfCompleted / pagePdfSec) * 60);
+    const { docsPerMin, pagesPerMin, pdfRate } = calcPageMetrics(
+      totalScraped, pageIndex, Date.now() - sectorStart, Date.now() - pagePdfStartedAt, pdfCompleted,
+    );
 
     display.pageLine(
       pageIndex + 1,
@@ -271,7 +301,7 @@ export const scrapeSector = async (
       pdfCompleted,
       pagePdfStats.pdfConfidentialThisPage,
       pagePdfStats.pdfFailedThisPage,
-      elapsed(),
+      elapsedSince(sectorStart),
       docsPerMin,
       pagesPerMin,
     );
@@ -287,7 +317,7 @@ export const scrapeSector = async (
       ...pagePdfStats,
       pdfRate: `${pdfRate} pdfs/min`,
       rate: docsPerMin != null ? `${docsPerMin} docs/min` : '-',
-      elapsed: elapsed(),
+      elapsed: elapsedSince(sectorStart),
     });
 
     pageEvents.push({
@@ -302,12 +332,12 @@ export const scrapeSector = async (
       targetDocs: runLimit,
       totalRecords: page.totalRecords,
       ...pagePdfStats,
-      elapsed: elapsed(),
+      elapsed: elapsedSince(sectorStart),
       createdAt: new Date().toISOString(),
     });
 
     if (!page.hasNextPage) {
-      logger.info('Last page - sector complete', { sector: `${sectorId}=${sectorName}`, pagesProcessed: pageIndex + 1, totalScraped, elapsed: elapsed() });
+      logger.info('Last page - sector complete', { sector: `${sectorId}=${sectorName}`, pagesProcessed: pageIndex + 1, totalScraped, elapsed: elapsedSince(sectorStart) });
       break;
     }
 
@@ -334,6 +364,6 @@ export const scrapeSector = async (
   }
 
   if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true, districtId, opts.checkpointId);
-  logger.info('Sector done', { sector: `${sectorId}=${sectorName}`, totalScraped, elapsed: elapsed() });
+  logger.info('Sector done', { sector: `${sectorId}=${sectorName}`, totalScraped, elapsed: elapsedSince(sectorStart) });
   return { count: totalScraped, docs: collected };
 };
