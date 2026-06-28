@@ -1,21 +1,21 @@
 # pj-peru-scraper
 
-Scraper HTTP en TypeScript para portales JSF peruanos. Usa axios + Cheerio, no automatiza navegador. Soporta OEFA (PrimeFaces) y PJ Peru (RichFaces), con paginacion JSF, checkpoints, salida JSONL y descarga opcional de PDFs.
+Scraper HTTP en TypeScript para portales JSF peruanos. Usa axios + Cheerio, no automatiza navegador. Soporta OEFA (PrimeFaces) y PJ Peru (RichFaces), con paginación JSF, checkpoints, salida JSONL y descarga opcional de PDFs.
 
-## Contexto Rapido
+## Contexto Rápido
 
 El proyecto busca probar que el scraper corre de punta a punta:
 
 - compila y pasa tests unitarios;
 - maneja sesiones JSF reales sin browser automation;
-- extrae paginas y documentos reales;
+- extrae páginas y documentos reales;
 - descarga PDFs cuando el portal los expone;
 - registra fallos recuperables sin truncar silenciosamente;
 - corre en paralelo mediante comandos npm.
 
-Evidencia actual: en una corrida real de Suprema por año con VPN peruana, el scraper sostuvo cerca de una hora de extraccion, llego a ~43,750 documentos combinando run principal + retry, y demostro que los soft-blocks son contencion del pool JSF, no HTTP 429.
+Evidencia actual: en una corrida real de Suprema por año con VPN peruana, el scraper sostuvo cerca de una hora de extracción, llegó a ~43,750 documentos combinando run principal + retry, y demostró que los soft-blocks son contención del pool JSF, no HTTP 429.
 
-## Configuracion Inicial
+## Configuración Inicial
 
 Copiar la plantilla y editar los valores que necesites:
 
@@ -23,22 +23,22 @@ Copiar la plantilla y editar los valores que necesites:
 cp .env.example .env
 ```
 
-El scraper carga `.env` automaticamente al arrancar. No es necesario exportar variables en la terminal. Ver `.env.example` para la lista completa con descripciones.
+El scraper carga `.env` automáticamente al arrancar. No es necesario exportar variables en la terminal. Ver `.env.example` para la lista completa con descripciones.
 
-Para los tests de esta guia, el `.env` recomendado es:
+Para los tests de esta guía, el `.env` recomendado es:
 
 ```bash
 # .env — ajustes recomendados para validar el proyecto completo
-PDF_CONCURRENCY=4          # descargas PDF concurrentes por pagina (por defecto: 1)
-PROBE_429_TOTAL=100        # requests para la sonda 429 (reducir para test rapido)
+PDF_CONCURRENCY=4          # descargas PDF concurrentes por página (por defecto: 1)
+PROBE_429_TOTAL=100        # requests para la sonda 429 (reducir para test rápido)
 PROBE_429_CONCURRENCY=10   # concurrencia de la sonda (ajustar al umbral a testear)
 ```
 
-## Guia De Pruebas
+## Guía De Pruebas
 
 Correr en este orden. Los comandos npm funcionan igual en Ubuntu, Windows y CI — no invocar los scripts `.mjs` directamente. Los primeros 3 pasos no requieren internet ni VPN.
 
-### Paso 1 — Sin internet (verificacion estatica)
+### Paso 1 — Sin internet (verificación estática)
 
 ```bash
 npm ci            # instala dependencias exactas del lockfile
@@ -53,13 +53,13 @@ Resultado esperado: `Tests  170 passed (170)`, sin errores tsc ni lint.
 npm run verify:local
 ```
 
-Simula tres escenarios sin tocar ningun portal: 429 recuperable (3 intentos, exito), 429 persistente (3 intentos, falla controlada), y soft-block (3 paginas AJAX vacias consecutivas → abort). Imprime `"ok": true` con las tres secciones en JSON.
+Simula tres escenarios sin tocar ningún portal: 429 recuperable (3 intentos, éxito), 429 persistente (3 intentos, falla controlada), y soft-block (3 páginas AJAX vacías consecutivas → abort). Imprime `"ok": true` con las tres secciones en JSON.
 
 ```bash
 npm run demo:soft-block
 ```
 
-Levanta un servidor HTTP local en `127.0.0.1` que replica el patron de soft-block del portal real: GET bootstrap entrega 2 documentos, los POST de paginacion AJAX devuelven HTTP 200 con cuerpo vacio y next-button presente. Resultado esperado:
+Levanta un servidor HTTP local en `127.0.0.1` que replica el patrón de soft-block del portal real: GET bootstrap entrega 2 documentos, los POST de paginación AJAX devuelven HTTP 200 con cuerpo vacío y next-button presente. Resultado esperado:
 
 ```
 ✓ scraped   page 1/?  docs=2
@@ -68,18 +68,18 @@ Levanta un servidor HTTP local en `127.0.0.1` que replica el patron de soft-bloc
 ✖ ABORT     page 4/?  docs=0
 ```
 
-`Page events emitted: 4`. No requiere VPN ni conexion de red.
+`Page events emitted: 4`. No requiere VPN ni conexión de red.
 
-### Paso 3 — Internet publica, sin VPN (OEFA)
+### Paso 3 — Internet pública, sin VPN (OEFA)
 
 ```bash
 npm run scrape:oefa:test100
 ```
 
-Extrae 100 documentos reales del portal publico OEFA + descarga sus PDFs. No requiere VPN. Al terminar verifica:
-- `output/test100/oefa-documents.jsonl` — exactamente 100 lineas
+Extrae 100 documentos reales del portal público OEFA + descarga sus PDFs. No requiere VPN. Al terminar verifica:
+- `output/test100/oefa-documents.jsonl` — exactamente 100 líneas
 - `output/test100/pdfs/` — archivos `.pdf` presentes
-- `output/test100/run-summary.json` — totales y metricas
+- `output/test100/run-summary.json` — totales y métricas
 
 ### Paso 4 — VPN peruana activa (PJ Peru smoke)
 
@@ -103,17 +103,17 @@ Luego:
 npm run scrape:pjperu:smoke
 ```
 
-Conecta al portal, envia el formulario de busqueda JSF y parsea 20 documentos en dry-run (no escribe nada al disco). Resultado esperado:
+Conecta al portal, envía el formulario de búsqueda JSF y parsea 20 documentos en dry-run (no escribe nada al disco). Resultado esperado:
 
 ```
 OK Session ready
 OK Search complete  N records · M pages
-  Pagina 1 de M   |   Tiempo: Xs
-  + Documentos esta pagina  : 10
+  Página 1 de M   |   Tiempo: Xs
+  + Documentos esta página  : 10
     Total acumulado         : 10
 ```
 
-Confirma que la sesion HTTP, el ViewState JSF, el formulario de busqueda y el parser RichFaces funcionan con el portal real.
+Confirma que la sesión HTTP, el ViewState JSF, el formulario de búsqueda y el parser RichFaces funcionan con el portal real.
 
 ### Paso 5 — VPN peruana activa (tests acotados con datos reales)
 
@@ -122,15 +122,15 @@ npm run scrape:pjperu:suprema:years:test   # 4 años x 500 docs + PDFs, ~6 min
 npm run scrape:pjperu:districts:test       # 34 distritos + PDFs, ~25 min
 ```
 
-Estos son los tests de integracion completos. Producen documentos reales, PDFs descargados y reportes en `output/`.
+Estos son los tests de integración completos. Producen documentos reales, PDFs descargados y reportes en `output/`.
 
-### Paso 6 — Verificar logica de 429 contra portal real (opcional)
+### Paso 6 — Verificar lógica de 429 contra portal real (opcional)
 
 ```bash
 npm run probe:oefa:429
 ```
 
-Sonda el portal OEFA con 500 requests concurrentes para encontrar el threshold de rate limiting. Imprime `[PASS]` si detecta 429, `[WARN]` si no. Solo util para calibrar `PDF_CONCURRENCY`.
+Sonda el portal OEFA con 500 requests concurrentes para encontrar el threshold de rate limiting. Imprime `[PASS]` si detecta 429, `[WARN]` si no. Solo útil para calibrar `PDF_CONCURRENCY`.
 
 ---
 
@@ -140,40 +140,40 @@ Sonda el portal OEFA con 500 requests concurrentes para encontrar el threshold d
 | `npm run verify:local` | No | ~3 s |
 | `npm run demo:soft-block` | No | ~5 s |
 | `npm run scrape:oefa:test100` | No | ~2-5 min |
-| `npm run scrape:pjperu:smoke` | Si (Peru) | ~30 s |
-| `npm run scrape:pjperu:suprema:years:test` | Si (Peru) | ~6 min |
-| `npm run scrape:pjperu:districts:test` | Si (Peru) | ~25 min |
+| `npm run scrape:pjperu:smoke` | Sí (Peru) | ~30 s |
+| `npm run scrape:pjperu:suprema:years:test` | Sí (Peru) | ~6 min |
+| `npm run scrape:pjperu:districts:test` | Sí (Peru) | ~25 min |
 
 ## Scripts Principales
 
 | Script | Uso |
 | --- | --- |
 | `npm run simulate:429` | Simula retry/backoff 429 localmente |
-| `npm run demo:soft-block` | Demo offline de deteccion de soft-block (servidor local) |
+| `npm run demo:soft-block` | Demo offline de detección de soft-block (servidor local) |
 | `npm run scrape:oefa:test100` | 100 documentos OEFA + PDFs |
 | `npm run scrape:oefa:parallel` | Sectores OEFA en paralelo |
 | `npm run scrape:pjperu:smoke` | Smoke PJ Peru directo por CLI |
 | `npm run scrape:pjperu:districts:dry` | Smoke Superior por distritos, sin escribir datos |
 | `npm run scrape:pjperu:districts:test` | Prueba acotada Superior con PDFs |
-| `npm run scrape:pjperu:districts` | Extraccion Superior por distritos |
+| `npm run scrape:pjperu:districts` | Extracción Superior por distritos |
 | `npm run scrape:pjperu:suprema:years:dry` | Smoke Suprema por años |
 | `npm run scrape:pjperu:suprema:years:test` | Prueba acotada Suprema por años |
-| `npm run scrape:pjperu:suprema:years` | Extraccion Suprema particionada por año |
+| `npm run scrape:pjperu:suprema:years` | Extracción Suprema particionada por año |
 | `npm run scrape:pjperu:suprema:years:retry` | Retry secuencial de años con soft-block |
 
-## Politica De Retry Y Caso Real Encontrado
+## Política De Retry Y Caso Real Encontrado
 
 El scraper maneja dos familias de error de disponibilidad:
 
-| Caso | Como se detecta | Que hace el scraper |
+| Caso | Cómo se detecta | Qué hace el scraper |
 | --- | --- | --- |
-| HTTP 429 o timeout | Excepcion HTTP | `withRetry()` reintenta hasta 3 veces con jitter exponencial |
-| Soft-block JSF | 3 HTTP 200 con AJAX vacio seguidos | Registra `soft_block_abort`, guarda checkpoint, permite `--resume` |
+| HTTP 429 o timeout | Excepción HTTP | `withRetry()` reintenta hasta 3 veces con jitter exponencial |
+| Soft-block JSF | 3 HTTP 200 con AJAX vacío seguidos | Registra `soft_block_abort`, guarda checkpoint, permite `--resume` |
 
-**El caso real encontrado en produccion fue el soft-block, no el 429.**
+**El caso real encontrado en producción fue el soft-block, no el 429.**
 
-En las corridas de PJ Peru Suprema con 12 workers en paralelo, el portal devolvio HTTP 200
-con cuerpo AJAX vacio en lugar de un codigo de error explicito. Es el equivalente funcional
+En las corridas de PJ Peru Suprema con 12 workers en paralelo, el portal devolvió HTTP 200
+con cuerpo AJAX vacío en lugar de un código de error explícito. Es el equivalente funcional
 del 429: el portal deja de entregar datos silenciosamente porque los workers compiten por
 el mismo ViewState del pool JSF.
 
@@ -183,14 +183,14 @@ El scraper lo detecta, lo registra y no trunca el resultado. Para verlo sin VPN 
 npm run demo:soft-block   # muestra la secuencia completa: scraped → warning → warning → ABORT
 ```
 
-Si ocurre en una corrida real, el checkpoint queda guardado y se puede reanudar con un solo worker para eliminar la contencion:
+Si ocurre en una corrida real, el checkpoint queda guardado y se puede reanudar con un solo worker para eliminar la contención:
 
 ```bash
 npm run scrape:pjperu:suprema:years:retry
 ```
 
 
-## Artefactos De Ejecucion
+## Artefactos De Ejecución
 
 La carpeta de salida depende del comando:
 - Scripts nombrados (`scrape:oefa:test100`, etc.) → carpeta fija definida en el script
@@ -199,25 +199,25 @@ La carpeta de salida depende del comando:
 
 Los PDFs van a una carpeta compartida entre corridas ya que sus nombres son idempotentes (mismo expediente = mismo archivo).
 
-| Archivo | Proposito | Cuando aparece |
+| Archivo | Propósito | Cuándo aparece |
 | --- | --- | --- |
-| `*.jsonl` | Un documento JSON por linea | Siempre, salvo `--dry-run` |
+| `*.jsonl` | Un documento JSON por línea | Siempre, salvo `--dry-run` |
 | `pdfs/*.pdf` | PDFs descargados del portal | Solo con `--pdfs` y sin `--dry-run` |
-| `run-summary.json` | Totales, metricas y tiempos | Siempre, salvo `--dry-run` |
-| `page-events.jsonl` | Evento por pagina: tipo, docs, PDFs, elapsed | Siempre, salvo `--dry-run` |
+| `run-summary.json` | Totales, métricas y tiempos | Siempre, salvo `--dry-run` |
+| `page-events.jsonl` | Evento por página: tipo, docs, PDFs, elapsed | Siempre, salvo `--dry-run` |
 | `run-report.md` | Resumen legible en Markdown | Siempre, salvo `--dry-run` |
 | `failed-pdfs.json` | PDFs confidenciales, missing o fallidos con motivo | Solo si hubo fallos de PDF |
-| `checkpoint_*.json` | Sector + pagina + total para `--resume` | Siempre, salvo `--dry-run` |
+| `checkpoint_*.json` | Sector + página + total para `--resume` | Siempre, salvo `--dry-run` |
 
 ## Flujo General
 
 ```mermaid
 flowchart TD
     CLI["npm script / CLI"] --> Config["SiteConfig"]
-    Config --> Session["Sesion HTTP\naxios + cookie jar"]
-    Session --> GET["GET pagina inicial\n→ JSESSIONID + ViewState"]
+    Config --> Session["Sesión HTTP\naxios + cookie jar"]
+    Session --> GET["GET página inicial\n→ JSESSIONID + ViewState"]
     GET --> Search{"config.search?"}
-    Search -->|Si| SearchPOST["POST busqueda JSF\n→ primera pagina de resultados"]
+    Search -->|Si| SearchPOST["POST búsqueda JSF\n→ primera página de resultados"]
     Search -->|No| Parse
     SearchPOST --> Parse["Parsear filas + paginador + ViewState"]
     Parse --> Empty{"0 filas?"}
@@ -225,11 +225,11 @@ flowchart TD
     Empty -->|"No (fin natural)"| Output
     Empty -->|No| MapDocs["Mapear a JudicialDocument[]"]
     MapDocs --> Pdfs{"--pdfs?"}
-    Pdfs -->|Si| Download["Descargar PDFs\nconcurrentes por pagina"]
+    Pdfs -->|Si| Download["Descargar PDFs\nconcurrentes por página"]
     Pdfs -->|No| Collect["Acumular docs en memoria"]
     Download --> Collect
     Collect --> HasNext{"hasNextPage?"}
-    HasNext -->|Si| AJAX["POST paginacion AJAX\nViewState + numero pagina"]
+    HasNext -->|Si| AJAX["POST paginación AJAX\nViewState + número de página"]
     AJAX --> Parse
     HasNext -->|No| Output
     SoftBlock -->|abort| Output
@@ -243,13 +243,13 @@ PJ Peru expone PDFs por URL directa. OEFA usa acciones JSF con `ViewState`; algu
 | Estado | Significado |
 | --- | --- |
 | `downloaded` | PDF descargado |
-| `skippedExisting` | PDF ya existia en disco |
-| `confidential` | Documento valido sin PDF publico |
-| `missingJsfAction` | No se encontro accion JSF para descargar |
+| `skippedExisting` | PDF ya existía en disco |
+| `confidential` | Documento válido sin PDF público |
+| `missingJsfAction` | No se encontró acción JSF para descargar |
 | `missingPdfUrl` | Documento sin URL directa |
-| `failedDownload` | Hubo intento real y fallo |
+| `failedDownload` | Hubo intento real y falló |
 
-## Paralelizacion
+## Paralelización
 
 La interfaz recomendada siempre es npm:
 
@@ -265,13 +265,13 @@ Los runners internos particionan el trabajo:
 - PJ Peru Superior: por distrito judicial;
 - PJ Peru Suprema: por año, porque no tiene filtro de distrito.
 
-## Mapa de Lectura del Codigo
+## Mapa de Lectura del Código
 
-El codigo se organiza en capas, cada una construida sobre la anterior. Si queres explorar el repositorio, este orden evita saltar entre contextos sin el setup previo.
+El código se organiza en capas, cada una construida sobre la anterior. Si querés explorar el repositorio, este orden evita saltar entre contextos sin el setup previo.
 
 ### Capa 1 - Contratos
 
-| Archivo | Que define |
+| Archivo | Qué define |
 | --- | --- |
 | `src/types.ts` | `JudicialDocument`, `SiteConfig`, `ScrapeOptions` |
 | `src/models/internalTypes.ts` | `Session`, `ParsedPage`, `ParsedRow`, `$Root` |
@@ -280,9 +280,9 @@ El codigo se organiza en capas, cada una construida sobre la anterior. Si queres
 | `src/models/pdfTypes.ts` | `PagePdfStats`, `PdfBatchInput`, `PdfCandidate`, `PdfDownloadConfig` |
 | `src/models/jsfTypes.ts` | `PaginationRequest` y tipos JSF |
 
-### Capa 2 - Sesion HTTP
+### Capa 2 - Sesión HTTP
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
 | `src/session/cookies.ts` | Jar manual de cookies |
 | `src/session/rateLimit.ts` | Detecta rate-limit por contenido o 429 |
@@ -291,93 +291,93 @@ El codigo se organiza en capas, cada una construida sobre la anterior. Si queres
 
 ### Capa 3 - Protocolo JSF
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
 | `src/jsf/viewState.ts` | Extrae `javax.faces.ViewState` del HTML inicial |
 | `src/jsf/partialResponse.ts` | Parsea la envoltura XML de respuestas AJAX JSF |
 | `src/jsf/actionLink.ts` | Parsea onclick `mojarra.jsfcljs` para links de PDF (OEFA) |
-| `src/jsf/searchForm.ts` | Envia formulario de busqueda (AJAX o clasico con redirect) |
-| `src/jsf/pagination.ts` | Avanza paginas por AJAX (PrimeFaces o RichFaces) |
+| `src/jsf/searchForm.ts` | Envía formulario de búsqueda (AJAX o clásico con redirect) |
+| `src/jsf/pagination.ts` | Avanza páginas por AJAX (PrimeFaces o RichFaces) |
 
 ### Capa 4 - Parsers HTML
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
-| `src/parser/paginatorParser.ts` | Lee pagina actual, total y registros |
+| `src/parser/paginatorParser.ts` | Lee página actual, total y registros |
 | `src/parser/rowParser.ts` | Extrae filas PrimeFaces o RichFaces |
 | `src/parser/documentMapper.ts` | Convierte filas a `JudicialDocument` |
 | `src/parser/pageParser.ts` | Construye un `ParsedPage` completo |
 
 ### Capa 5 - PDF
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
-| `src/pdf/downloader.ts` | Descarga PDF directo o via accion JSF |
+| `src/pdf/downloader.ts` | Descarga PDF directo o vía acción JSF |
 | `src/scraper/pdfBatch.ts` | Clasifica candidatos y descarga en batches |
 
 ### Capa 6 - Scraping
 
-Cada archivo tiene una sola responsabilidad. Los orquestadores (`sectorScraper.ts`, `scraper.ts`) usan comentarios de seccion (`// ── Fase ──`) para que la ejecucion se lea como una narrativa lineal sin tener que rastrear funciones auxiliares.
+Cada archivo tiene una sola responsabilidad. Los orquestadores (`sectorScraper.ts`, `scraper.ts`) usan comentarios de sección (`// ── Fase ──`) para que la ejecución se lea como una narrativa lineal sin tener que rastrear funciones auxiliares.
 
-**Helpers de calculo (sin red ni disco):**
+**Helpers de cálculo (sin red ni disco):**
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
-| `src/scraper/sectorHelpers.ts` | Limites, duraciones y deteccion de condiciones del paginador — funciones puras |
-| `src/scraper/paginationHelpers.ts` | Fusion de estado de pagina y resolucion de siguiente pagina; `advancePage` hace el POST HTTP |
+| `src/scraper/sectorHelpers.ts` | Límites, duraciones y detección de condiciones del paginador — funciones puras |
+| `src/scraper/paginationHelpers.ts` | Fusión de estado de página y resolución de siguiente página; `advancePage` hace el POST HTTP |
 
-**Deteccion y eventos:**
+**Detección y eventos:**
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
-| `src/scraper/softBlock.ts` | Evalua contador de paginas vacias y emite warn/abort con log estructurado |
-| `src/scraper/pageEvents.ts` | Construye y loguea el evento `PageEvent` por cada pagina procesada |
+| `src/scraper/softBlock.ts` | Evalúa contador de páginas vacías y emite warn/abort con log estructurado |
+| `src/scraper/pageEvents.ts` | Construye y loguea el evento `PageEvent` por cada página procesada |
 
-**Bucle de paginacion (sectorScraper):**
+**Bucle de paginación (sectorScraper):**
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
-| `src/scraper/sectorScraper.ts` | Ciclo Bootstrap → Busqueda → Paginas → PDFs → Checkpoint |
+| `src/scraper/sectorScraper.ts` | Ciclo Bootstrap → Búsqueda → Páginas → PDFs → Checkpoint |
 
 **Bucle de sectores (scraper):**
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
 | `src/scraper/sectorDiscovery.ts` | Descubre sectores disponibles en el portal |
-| `src/scraper/sectorLoop.ts` | Resolucion de sectores, reintento por sector y pausas entre sectores |
-| `src/scraper/runStats.ts` | Calcula estadisticas finales y registra resumenes de ejecucion |
+| `src/scraper/sectorLoop.ts` | Resolución de sectores, reintento por sector y pausas entre sectores |
+| `src/scraper/runStats.ts` | Calcula estadísticas finales y registra resúmenes de ejecución |
 | `src/scraper/runOutput.ts` | Escribe JSONL y reporte de PDFs fallidos en disco |
-| `src/scraper/scraper.ts` | Orquestador principal: Setup → Sectores → Salida → Metricas → Reporte |
+| `src/scraper/scraper.ts` | Orquestador principal: Setup → Sectores → Salida → Métricas → Reporte |
 
 ### Capa 7 - Entrada y Paralelismo
 
-| Archivo | Que hace |
+| Archivo | Qué hace |
 | --- | --- |
 | `package.json` | Comandos npm portables para Ubuntu, Windows y CI |
-| `src/config.ts` | Configuracion por sitio: URLs, selectores, columnas y tiempos |
-| `src/config/constants.ts` | Constantes numericas y strings del sistema |
+| `src/config.ts` | Configuración por sitio: URLs, selectores, columnas y tiempos |
+| `src/config/constants.ts` | Constantes numéricas y strings del sistema |
 | `src/cli.ts` | Flags CLI y arranque |
 | `scripts/` | Implementaciones internas llamadas por los comandos npm |
 
 ## Estado del Proyecto
 
-**Veredicto: Near-Production** — auditoria tecnica independiente sobre arquitectura, manejo de errores, cobertura de tests, TSDoc y CI.
+**Veredicto: Near-Production** — auditoría técnica independiente sobre arquitectura, manejo de errores, cobertura de tests, TSDoc y CI.
 
 **Fortalezas confirmadas:**
 
-| Area | Resultado |
+| Área | Resultado |
 | --- | --- |
 | Arquitectura | Capas limpias sin imports circulares; sin god modules |
-| Manejo de errores | Retry/backoff con jitter completo; PDF downloads nunca lanzan excepcion — retornan structs tipados |
-| TSDoc | 114 bloques cubriendo todos los exports de la API publica; `@remarks`, `@param`, `@returns` en cada funcion |
+| Manejo de errores | Retry/backoff con jitter completo; PDF downloads nunca lanzan excepción — retornan structs tipados |
+| TSDoc | 114 bloques cubriendo todos los exports de la API pública; `@remarks`, `@param`, `@returns` en cada función |
 | Tests | 170 tests con fake timers, mocked fs, concurrencia verificada; todas las rutas de PDF cubiertas |
-| Observabilidad | Winston estructurado en cada evento del ciclo de vida; `PageEvent` trazable por pagina |
+| Observabilidad | Winston estructurado en cada evento del ciclo de vida; `PageEvent` trazable por página |
 
-**3 gaps antes de produccion completa:**
+**3 gaps antes de producción completa:**
 
-1. `validateOutput` usa `readFileSync` sobre el JSONL entero — riesgo de OOM en corridas de 43K+ documentos; deberia hacer streaming o leer solo el head.
-2. El loop de paginacion en `sectorScraper.ts` no tiene tests unitarios — soft-block abort, heuristicas RichFaces y `scrapeSectorWithRetry` quedan sin cobertura de unidad.
-3. CI no enforcea thresholds de coverage — una PR puede bajar de 80% a 20% y pasaria verde.
+1. `validateOutput` usa `readFileSync` sobre el JSONL entero — riesgo de OOM en corridas de 43K+ documentos; debería hacer streaming o leer solo el head.
+2. El loop de paginación en `sectorScraper.ts` no tiene tests unitarios — soft-block abort, heurísticas RichFaces y `scrapeSectorWithRetry` quedan sin cobertura de unidad.
+3. CI no enforcea thresholds de coverage — una PR puede bajar de 80% a 20% y pasaría verde.
 
 Estos tres gaps no afectan la corrida normal del scraper; son riesgos de mantenimiento y escala a largo plazo.
 
