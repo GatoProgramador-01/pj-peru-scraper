@@ -10,6 +10,7 @@ import { jitter } from '../utils/delay.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Returns a zeroed `PagePdfStats` object for a fresh scraper page. */
 export const emptyPdfStats = (): PagePdfStats => ({
   pdfDownloadedThisPage: 0,
   pdfFailedThisPage: 0,

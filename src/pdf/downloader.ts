@@ -12,17 +12,21 @@ import { withRetry } from '../session/retry.js';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
+/** Coerce an unknown thrown value to a string message. */
 const pdfErrorMessage = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
 
+/** Build the absolute path for a document's local PDF file. */
 const localPdfPath = (pdfDir: string, docId: string): string =>
   path.join(pdfDir, `${docId}.pdf`);
 
+/** Return a skippedExisting result if the file already exists on disk. */
 const checkAlreadyDownloaded = (filePath: string, startedAt: number): PdfDownloadResult | null =>
   fs.existsSync(filePath)
     ? { status: 'skippedExisting', localPath: filePath, latencyMs: Date.now() - startedAt }
     : null;
 
+/** Encode a mojarra action + viewState into a URL-encoded form body. */
 const buildJsfFormBody = (formId: string, mojarra: JsfAction, viewState: string): string => {
   const params: [string, string][] = [
     [formId, formId],
@@ -33,6 +37,7 @@ const buildJsfFormBody = (formId: string, mojarra: JsfAction, viewState: string)
   return params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 };
 
+/** Assert the buffer starts with the `%PDF` magic bytes. */
 const validatePdfBuffer = (buf: Buffer): void => {
   const magic = buf.slice(0, 4).toString('ascii');
   if (magic !== PDF_MAGIC) throw new Error(`JSF action response is not a PDF: ${magic}`);
@@ -40,6 +45,22 @@ const validatePdfBuffer = (buf: Buffer): void => {
 
 // ─── Public download functions ────────────────────────────────────────────────
 
+/**
+ * Download a PDF via direct GET using the document's `pdfUrl`.
+ *
+ * @remarks
+ * Skips the download and returns `skippedExisting` when the file already
+ * exists on disk. Validates the `%PDF` magic bytes after download — a
+ * successful HTTP 200 that returns an HTML error page will throw. Latency
+ * is always written to `metrics` when provided.
+ *
+ * @param session - Active HTTP session carrying cookies and the axios client
+ * @param doc - Judicial document; must have a non-null `pdfUrl`
+ * @param dlConfig - Destination directory and retry timing config
+ * @param metrics - Optional run-level metrics accumulator for latency tracking
+ * @returns Result with status (`downloaded` | `skippedExisting` | `missingPdfUrl` | `failedDownload`) and local path
+ * @throws Never — errors are caught and returned as `failedDownload` status
+ */
 export const downloadPdf = async (
   session: Session,
   doc: JudicialDocument,
@@ -74,6 +95,25 @@ export const downloadPdf = async (
   }
 };
 
+/**
+ * Download a PDF via JSF mojarra form POST (OEFA documents).
+ *
+ * @remarks
+ * OEFA does not expose a direct PDF URL. Instead, each document is gated
+ * behind a JSF lifecycle: the caller extracts `componentId` and `paramUuid`
+ * from the row's `onclick` handler, then passes them in `target.mojarra`.
+ * This function builds a `application/x-www-form-urlencoded` body that
+ * triggers the mojarra action, absorbs any `Set-Cookie` response headers
+ * back into the session, and validates the `%PDF` magic bytes before
+ * writing the file. Skips if the file already exists on disk.
+ *
+ * @param session - Active HTTP session; cookies are updated in place after the POST
+ * @param siteConfig - Site-level config supplying `startUrl`, form ID, and retry timing
+ * @param target - PDF target containing `doc`, `pdfDir`, `viewState`, and `mojarra` action data
+ * @param metrics - Optional run-level metrics accumulator for latency tracking
+ * @returns Result with status (`downloaded` | `skippedExisting` | `failedDownload`) and local path
+ * @throws Never — errors are caught and returned as `failedDownload` status
+ */
 export const downloadJsfActionPdf = async (
   session: Session,
   siteConfig: SiteConfig,

@@ -14,21 +14,49 @@ export interface RunReportInput {
   totalScraped: number;
 }
 
+/** Formats a millisecond duration as a compact human-readable string. */
 const duration = (ms: number): string => {
   const sec = Math.round(ms / 1000);
   return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
 };
 
+/** Writes a value as pretty-printed JSON, creating parent directories as needed. */
 const writeJson = (filePath: string, value: unknown): void => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
 };
 
+/** Serializes each row as a JSON line and writes the JSONL file. */
 const writeJsonl = (filePath: string, rows: unknown[]): void => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, rows.map(row => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : ''));
 };
 
+/**
+ * Writes the three run-report artifacts for a completed scrape.
+ *
+ * @remarks
+ * Always writes regardless of `dryRun` — callers in `scrapeAll` guard this
+ * call with `!opts.dryRun`. Three files are created inside the same directory
+ * as `opts.outputPath`:
+ * - `run-summary.json` — structured JSON with run config, metrics, and artifact paths
+ * - `page-events.jsonl` — one line per `PageEvent` emitted during the run
+ * - `run-report.md` — human-readable Markdown summary
+ *
+ * Missing parent directories are created automatically via `mkdirSync`.
+ *
+ * @param input - Aggregated run data; see {@link RunReportInput} for field descriptions
+ * @param input.opts - Scrape options used for the run (site, outputPath, pdfDir, limit)
+ * @param input.metrics - Counters accumulated across all sectors (docs, PDFs, 429s, retries)
+ * @param input.pageEvents - Ordered list of page-level events captured during scraping
+ * @param input.elapsedMs - Wall-clock duration of the run in milliseconds
+ * @param input.docsPerMinute - Pre-computed throughput rate for documents
+ * @param input.pdfsPerMinute - Pre-computed throughput rate for PDFs
+ * @param input.avgPdfLatencyMs - Average round-trip latency for successful PDF downloads
+ * @param input.totalScraped - Final count of documents collected (may differ from `metrics.totalDocumentsCollected` when a limit is in force)
+ * @returns Object with absolute paths to the three written artifacts:
+ *   `{ summaryPath, pageEventsPath, markdownPath }`
+ */
 export const writeRunReports = ({
   opts,
   metrics,

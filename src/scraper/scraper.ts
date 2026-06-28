@@ -14,11 +14,13 @@ import { scrapeSector } from './sectorScraper.js';
 import type { JudicialDocument } from '../types.js';
 import * as display from '../display/terminal.js';
 
+/** Formats a millisecond duration as a compact human-readable string. */
 const formatDuration = (ms: number): string => {
   const sec = Math.round(ms / 1000);
   return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
 };
 
+/** Writes the structured failed-PDF report as pretty-printed JSON. */
 const writeFailedPdfReport = (failedPdfPath: string, failedPdfs: PdfFailure[]): void => {
   fs.mkdirSync(path.dirname(failedPdfPath), { recursive: true });
   fs.writeFileSync(failedPdfPath, JSON.stringify(failedPdfs, null, 2));
@@ -153,6 +155,34 @@ const writeScrapeOutput = (
 
 // ── Orchestrator ─────────────────────────────────────────────────────────────
 
+/**
+ * Top-level orchestrator: runs a full scrape for the requested site.
+ *
+ * @remarks
+ * Full lifecycle in order:
+ * 1. Looks up `opts.site` in the `SITES` config map — throws immediately if
+ *    the key is unknown so callers get a clear error before any I/O.
+ * 2. Creates the output directory (and `pdfDir` when provided and not dry-run).
+ * 3. Resolves the ordered list of sectors via `resolveSectorsToRun`: runs live
+ *    sector discovery against the site; falls back to `config.search.sectors`
+ *    when the live call returns nothing; treats sites without a sector dropdown
+ *    as a single unnamed sector.
+ * 4. Loops through sectors sequentially, calling `scrapeSectorWithRetry` for
+ *    each. Stops early when `opts.limit` is reached. A random 5–10 s pause is
+ *    inserted between sectors to avoid hammering the server.
+ * 5. Flushes all collected documents to JSONL via `writeScrapeOutput`.
+ * 6. Validates the output with `validateOutput` (skipped on dry-run).
+ * 7. Writes run-report artifacts (JSON summary, page-events JSONL, Markdown)
+ *    via `writeRunReports` (skipped on dry-run).
+ * 8. Renders a terminal summary table via `display.runSummary`.
+ *
+ * @param opts - Scrape options; `opts.site` must match a key in the `SITES`
+ *   config, and `opts.outputPath` determines where the JSONL is written
+ * @returns `Promise<void>` — all output is written to disk as a side effect
+ * @throws {Error} When `opts.site` is not a key in `SITES`
+ *   (`"Unknown site: <site>. Available: ..."`)
+ * @throws {Error} When `validateOutput` detects zero records scraped
+ */
 export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
   const config = SITES[opts.site];
   if (!config) throw new Error(`Unknown site: ${opts.site}. Available: ${Object.keys(SITES).join(', ')}`);

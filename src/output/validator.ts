@@ -2,6 +2,22 @@ import fs from 'fs';
 import { logger } from '../logger.js';
 import type { JudicialDocument } from '../types.js';
 
+/**
+ * Validates the JSONL output file after a scrape run.
+ *
+ * @remarks
+ * Reads the first 10 lines of the JSONL file and checks that each required
+ * field (`id`, `site`, `caseNumber`, `fetchedAt`) is non-null. Duplicate IDs
+ * within the sample are also detected. Both conditions emit `logger.warn` and
+ * do NOT throw — they are advisory warnings only. Validation is skipped
+ * entirely when `dryRun` is `true` because no output file is produced.
+ *
+ * @param outputPath - Absolute path to the JSONL file produced by the run
+ * @param total - Total records scraped; must be > 0 or the function throws
+ * @param dryRun - When `true` logs a skip message and returns immediately
+ * @returns `void` — side effects are limited to logger calls
+ * @throws {Error} When `total` is 0 (`"VALIDATION FAILED: zero records scraped"`)
+ */
 export const validateOutput = (outputPath: string, total: number, dryRun: boolean): void => {
   if (dryRun) { logger.info('[dry-run] Skipping output validation'); return; }
   if (total === 0) throw new Error('VALIDATION FAILED: zero records scraped');

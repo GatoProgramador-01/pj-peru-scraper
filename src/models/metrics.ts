@@ -63,6 +63,13 @@ export interface PageEvent {
   createdAt: string;
 }
 
+/**
+ * Creates a zeroed `RunMetrics` snapshot for a new scraper run.
+ *
+ * @returns A fresh `RunMetrics` object with all counters at zero and
+ *   `startedAt` set to the current epoch milliseconds — used to track
+ *   progress and produce the final run report.
+ */
 export const createRunMetrics = (): RunMetrics => ({
   totalDocumentsCollected: 0,
   totalPdfCandidates: 0,
@@ -77,6 +84,19 @@ export const createRunMetrics = (): RunMetrics => ({
   startedAt: Date.now(),
 });
 
+/**
+ * Constructs a `PdfFailure` record from a scraped `JudicialDocument`.
+ *
+ * @remarks
+ * `attemptedAt` is set to `new Date().toISOString()` at call time.
+ * `error` should be the raw axios or filesystem error message when available.
+ *
+ * @param doc - The source judicial document whose metadata is copied
+ * @param status - Terminal status code for this PDF attempt
+ * @param reason - Human-readable explanation of the failure
+ * @param error - Optional raw error message from axios or the filesystem
+ * @returns A fully populated `PdfFailure` ready to persist to the failures log
+ */
 export const pdfFailureFromDocument = (
   doc: JudicialDocument,
   status: PdfFailure['status'],
