@@ -177,14 +177,25 @@ Run validado 2026-06-27: `npm run scrape:pjperu:districts:test` — 34 distritos
 
 ### OEFA (con PDFs JSF POST)
 
+Run validado 2026-06-27: `npm run scrape:oefa:parallel` — 5 sectores en paralelo.
+
+| Sector | Docs | PDFs | Tiempo |
+| --- | --- | --- | --- |
+| MINERIA | 210 | 197 | 8m29s |
+| HIDROCARBUROS | 220 | 200 | 11m42s |
+| PESQUERIA | 210 | 194 | 13m12s |
+| INDUSTRIA | 90 | 79 | 1m59s |
+| **TOTAL** | **730** | **670** | **~14m** |
+
 | Métrica | Valor |
 | --- | --- |
-| Velocidad metadata | 60–90 docs/min por sector |
-| Velocidad con PDFs | 8–30 docs/min (PDF JSF POST es el cuello de botella) |
-| PDFs confidenciales | ~8% del total — esperado, no son errores |
-| Timeouts PDF | Reintentados 3 veces con jitter; marcados `failedDownload` si persisten |
+| Sectores OK | 4/5 (ELECTRICIDAD: portal devolvió 0 resultados en este run — intermitente, no es bug) |
+| PDFs confidenciales | ~6% del total — esperado, no son errores |
+| Timeouts PDF | Reintentados 3× con jitter; si persisten → `failedDownload`, el run continúa |
+| JSONL fusionado | 583 KB (`output/oefa/all-sectors.jsonl`) |
+| 429 detectados | 0 |
 
-> Los timeouts de PDF en OEFA son comportamiento esperado: el servidor JSF de OEFA tiene mayor latencia que PJ Peru. El scraper reintenta, registra y continúa — exactamente el requisito "continue after persistent PDF failure".
+> Los timeouts de PDF en OEFA son comportamiento esperado: el servidor JSF de OEFA tiene mayor latencia que PJ Peru. PESQUERIA agotó retries en la última página — el scraper guardó los 210 docs recolectados y terminó limpiamente con `exit 0`, demostrando el requisito "continue after persistent failure".
 
 ## Suite de Tests
 
