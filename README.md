@@ -177,34 +177,32 @@ con cuerpo AJAX vacio en lugar de un codigo de error explicito. Es el equivalent
 del 429: el portal deja de entregar datos silenciosamente porque los workers compiten por
 el mismo ViewState del pool JSF.
 
-El scraper lo detecta, lo registra y no trunca el resultado:
+El scraper lo detecta, lo registra y no trunca el resultado. Para verlo sin VPN ni portal:
 
 ```bash
-# Ver eventos de soft-block en una corrida real:
-grep "soft_block" output/*/page-events.jsonl
-
-# Reanudar con un solo worker para eliminar la contencion:
-npm run scrape:pjperu:suprema:years:retry
+npm run demo:soft-block   # muestra la secuencia completa: scraped → warning → warning → ABORT
 ```
 
-Para validar la logica de retry sin necesitar ningun portal:
+Si ocurre en una corrida real, el checkpoint queda guardado y se puede reanudar con un solo worker para eliminar la contencion:
 
 ```bash
-npm run verify:local
+npm run scrape:pjperu:suprema:years:retry
 ```
 
 
 ## Artefactos De Ejecucion
 
-| Archivo | Proposito |
-| --- | --- |
-| `*.jsonl` | Un documento por linea |
-| `pdfs/*.pdf` | PDFs descargados |
-| `run-summary.json` | Totales y metricas principales |
-| `page-events.jsonl` | Eventos por pagina |
-| `run-report.md` | Resumen humano de la corrida |
-| `failed-pdfs.json` | PDFs confidenciales, missing o fallidos |
-| `checkpoint_*.json` | Estado para `--resume` |
+Cada corrida escribe en su propia carpeta `output/runs/YYYY-MM-DD-HHMM/`. Los PDFs van a `output/pdfs/` compartido (nombres idempotentes).
+
+| Archivo | Proposito | Cuando aparece |
+| --- | --- | --- |
+| `*.jsonl` | Un documento JSON por linea | Siempre, salvo `--dry-run` |
+| `pdfs/*.pdf` | PDFs descargados del portal | Solo con `--pdfs` y sin `--dry-run` |
+| `run-summary.json` | Totales, metricas y tiempos | Siempre, salvo `--dry-run` |
+| `page-events.jsonl` | Evento por pagina: tipo, docs, PDFs, elapsed | Siempre, salvo `--dry-run` |
+| `run-report.md` | Resumen legible en Markdown | Siempre, salvo `--dry-run` |
+| `failed-pdfs.json` | PDFs confidenciales, missing o fallidos con motivo | Solo si hubo fallos de PDF |
+| `checkpoint_*.json` | Sector + pagina + total para `--resume` | Siempre, salvo `--dry-run` |
 
 ## Flujo General
 
