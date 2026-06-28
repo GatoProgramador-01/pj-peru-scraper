@@ -80,7 +80,7 @@ Resultado esperado: `Tests  53 passed (53)`, sin errores tsc ni lint.
 npm run verify:local
 ```
 
-Simula dos escenarios de 429: uno recuperable (3 intentos, exito) y uno persistente (3 intentos, falla controlada). Imprime `"ok": true` en JSON. Confirma que `withRetry` y el contador de 429 funcionan sin tocar ningun portal.
+Simula tres escenarios sin tocar ningun portal: 429 recuperable (3 intentos, exito), 429 persistente (3 intentos, falla controlada), y soft-block (3 paginas AJAX vacias consecutivas → abort). Imprime `"ok": true` con las tres secciones en JSON.
 
 ### Paso 3 — Internet publica, sin VPN (OEFA)
 
