@@ -1,0 +1,126 @@
+Continuamos el proyecto pj-peru-scraper (GatoProgramador-01/pj-peru-scraper, branch main, HEAD 1459608).
+
+Estado: refactor catedral completo. 53 tests, 0 errores tsc. Todo en main.
+
+Regla absoluta en cada archivo tocado: npx tsc --noEmit && npm test (53/53). No avances si falla.
+
+─── TAREA 1: readability final en sectorScraper.ts ───
+
+El while loop de scrapeSector tiene bloques inline que deben ser funciones puras nombradas a nivel módulo.
+
+1. buildSoftBlockEvent + handleSoftBlock (bloque soft-block ~líneas 206-229)
+
+   const buildSoftBlockEvent = (
+     type: 'soft_block_abort' | 'soft_block_warning',
+     site: string, sectorId: string | null, sectorName: string | null,
+     pageIndex: number, page: ParsedPage, metrics: RunMetrics,
+     runLimit: number | null, elapsed: string,
+   ): PageEvent => ({ type, site, sectorId, sectorName, pageIndex, ... })
+
+   const handleSoftBlock = (
+     consecutiveEmptyPages: number,
+     page: ParsedPage, pageIndex: number,
+     ctx: { site: string; sectorId: string | null; sectorName: string | null; metrics: RunMetrics; pageEvents: PageEvent[]; runLimit: number | null },
+     elapsed: string,
+   ): 'abort' | 'continue'
+   // retorna 'abort' si consecutiveEmptyPages >= CONSECUTIVE_EMPTY_ABORT, 'continue' si no
+
+2. buildPageEvent (objeto literal PageEvent ~líneas 293-307)
+
+   const buildPageEvent = (
+     site: string, sectorId: string | null, sectorName: string | null,
+     pageIndex: number, page: ParsedPage,
+     toWrite: JudicialDocument[], metrics: RunMetrics,
+     runLimit: number | null, pagePdfStats: PagePdfStats, elapsed: string,
+   ): PageEvent => ({ type: 'pageScraped', ... })
+
+3. logPageScraped (bloque logger.info ~líneas 279-291)
+
+   const logPageScraped = (
+     sectorId: string | null, sectorName: string | null,
+     pageIndex: number, page: ParsedPage,
+     toWrite: JudicialDocument[], totalScraped: number,
+     runLimit: number | null, metrics: RunMetrics,
+     pagePdfStats: PagePdfStats, pdfRate: number,
+     docsPerMin: number | null, elapsed: string,
+   ): void
+
+4. tryAdvancePage (bloque try/catch ~líneas 317-333)
+
+   const tryAdvancePage = async (
+     session: Session, config: SiteConfig,
+     ctx: AdvancePageCtx, metrics: RunMetrics,
+     totalScraped: number, page: ParsedPage,
+   ): Promise<{ $: $Root; newViewState: string | null } | 'done'>
+   // retorna 'done' si totalRecords guard activa o si catch atrapa error
+
+Después de extraer, el while loop debe leerse como prosa:
+  if hasReachedDocLimit → break
+  map rows to docs
+  if empty → handleSoftBlock → if 'abort' break, else advance and continue
+  download PDFs
+  collect docs
+  logPageScraped
+  pageEvents.push(buildPageEvent(...))
+  if last page → break
+  result = await tryAdvancePage → if 'done' break
+  advance pageIndex
+
+─── TAREA 2: readability final en pdfBatch.ts ───
+
+El for loop de chunks tiene lógica inline. Extraer:
+
+   const downloadChunk = async (
+     session: Session, config: SiteConfig,
+     chunk: PdfCandidate[], input: PdfBatchInput,
+     pdfDir: string, metrics: RunMetrics,
+   ): Promise<PdfDownloadResult[]> =>
+     Promise.all(chunk.map(c => downloadCandidate(session, config, c, input, pdfDir, metrics)));
+
+   const applyChunkResults = (
+     docs: JudicialDocument[], chunk: PdfCandidate[],
+     results: PdfDownloadResult[],
+     metrics: RunMetrics, failedPdfs: PdfFailure[],
+     stats: PagePdfStats,
+     onProgress: ((done: number, total: number) => void) | undefined,
+     counter: { done: number }, total: number,
+   ): void
+
+downloadPagePdfs queda como:
+  buildCandidates → mkdirSync → for chunks { downloadChunk → applyChunkResults → jitter }
+
+─── TAREA 3: pendientes de docs y config ───
+
+1. Verificar que README Mapa de Lectura Capa 1 lista src/models/pdfTypes.ts y src/models/jsfTypes.ts. Si no están, agregarlos.
+2. Verificar que scrape:pjperu:smoke existe en package.json y funciona (el README lo menciona).
+3. docs/reviewer-runbook.md — revisar que incluye: stats reales (43K docs Suprema, 499 PDFs Superior, 670 PDFs OEFA), comando curl de verificación VPN, nota sobre skippedExisting vs downloaded.
+
+─── TAREA 4 (FINAL): simular al revisor desde repo limpio ───
+
+Después de todos los cambios anteriores, clonar el repo en carpeta nueva y correr exactamente lo que hará el revisor:
+
+  git clone https://github.com/GatoProgramador-01/pj-peru-scraper.git pj-peru-revisor
+  cd pj-peru-revisor
+
+  npm install
+  # prepare hook debe compilar dist/ solo, sin correr npm run build manualmente
+
+  npm run ci
+  npm run verify:local
+
+  npm run scrape:oefa:test100
+  # verificar: output/test100/oefa-documents.jsonl tiene 100 líneas, pdfs/ tiene archivos .pdf
+
+  # con VPN Perú activa:
+  npm run scrape:pjperu:smoke
+  npm run scrape:pjperu:suprema:years:test   # 4 años x 500 docs + PDFs, ~6 min
+  npm run scrape:pjperu:districts:test        # 34 distritos + PDFs, ~25 min
+
+Reportar: qué comandos corrieron OK, cuántos docs/PDFs produjo cada uno, si el README
+describió correctamente lo que pasó. Si algo falla, arreglarlo antes de declarar done.
+
+─── LO QUE NO TOCAR ───
+
+- tests/ — ningún cambio
+- scripts/*.mjs — ningún cambio
+- Lógica de ninguna función — solo extraer, nombrar y mover
