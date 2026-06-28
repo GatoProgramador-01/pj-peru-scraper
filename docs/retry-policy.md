@@ -1,5 +1,30 @@
 # Retry Policy — JSF Pool Saturation vs HTTP 429
 
+## Flujo completo: detección → abort → retry
+
+```mermaid
+flowchart TD
+    A["Worker arranca\n(ej. SUPREMA 2010)"] --> B["GET inicio.xhtml\nPOST búsqueda\nObtiene ViewState"]
+    B --> C["fetchNextPage → POST AJAX paginación"]
+    C --> D{"Respuesta AJAX\ntiene HTML?"}
+    D -->|Sí| E["Parsear filas\nAcumular docs\nconsecutiveEmptyPages = 0"]
+    E --> F{"¿Más páginas?"}
+    F -->|Sí| C
+    F -->|No| G["✅ Completed\nEscribir JSONL\ncheckpoint: completed=true"]
+    D -->|No — respuesta vacía| H["consecutiveEmptyPages++"]
+    H --> I{"≥ 3 consecutivas?"}
+    I -->|No| C
+    I -->|Sí — SOFT BLOCK| J["Guardar checkpoint\npageIndex actual"]
+    J --> K["exit 1\nsoft_block_abort en\npage-events.jsonl"]
+
+    K --> L["npm run\nscrape:pjperu:suprema:years:retry\n--concurrency 1 --resume"]
+    L --> M["Cargar checkpoint\nNavegar a pageIndex guardado"]
+    M --> N["Continuar desde\nla última página conocida"]
+    N --> O["Sin competencia\nde pool JSF"]
+    O --> P["118 docs/min\nvs 82 en paralelo"]
+    P --> F
+```
+
 ## El problema que este documento explica
 
 El portal PJ Peru Suprema no emite HTTP 429 cuando se sobrecarga. En su lugar, el servidor JSF devuelve respuestas AJAX parciales vacías — el XML de respuesta llega con status 200 pero sin contenido HTML. Un scraper ingenuo lo trataría como "página vacía" y avanzaría, silenciosamente truncando la extracción.

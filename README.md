@@ -140,6 +140,15 @@ Lanza 34 workers de distrito con límite de 50 docs cada uno. Al terminar, revis
 | `npm run scrape:pjperu:suprema:years:resume` | Retoma Suprema desde checkpoint |
 | `npm run scrape:pjperu:suprema:years:retry` | Reintenta años con soft-block a concurrency 1 (ver `docs/retry-policy.md`) |
 
+## Suite de Tests
+
+```bash
+npm test        # 53 tests unitarios
+npm run ci      # typecheck + build + lint + tests — validación completa
+```
+
+Cobertura: parser HTML (PrimeFaces + RichFaces), downloader PDF (4 escenarios), retry/backoff con 429 simulado, documentMapper con contexto tipado.
+
 ## Arquitectura
 
 El scraper no controla un navegador. Mantiene una sesion HTTP, conserva cookies, extrae `ViewState`, envia formularios JSF y parsea HTML con Cheerio. Soporta dos variantes de componentes JSF sin cambiar el nucleo.
@@ -418,6 +427,68 @@ done
 ```
 
 Por que `--concurrency 1` funciona: el fallo original fue que 12 procesos arrancan juntos y saturan el ViewState pool. Un proceso solo nunca compite con nadie — puede extraer la pagina completa del distrito sin recibir respuestas AJAX vacias.
+
+## Paralelizacion Por Año — Corte Suprema
+
+### El problema: Suprema no tiene filtro de distrito
+
+A diferencia de la Corte Superior, la Suprema no expone un campo de distrito judicial. No hay forma de particionar la búsqueda por región. Todos los ~207,000 documentos están en un único resultado paginado.
+
+### La solución: un proceso por año
+
+El buscador acepta un rango de fechas. Si cada worker filtra un año distinto (2007, 2008, ... 2026), los 20 workers corren búsquedas completamente disjuntas — sin solapamiento de páginas, sin duplicados.
+
+```
+Sin paralelismo:  1 proceso × ~20,700 páginas × 0.5s = ~170 min (~2.8h)
+Con paralelismo: 20 años ÷ 12 workers → 2 rondas × ~50 min = ~1.5h
+```
+
+### Evidencia del run 2026-06-27
+
+| Métrica | Valor |
+| --- | --- |
+| Workers paralelos | 12 (2007–2026) |
+| Docs extraídos (10 años activos) | 43,000+ en ~75 min |
+| Velocidad sostenida por worker | 80–89 docs/min |
+| Velocidad total agregada | ~800 docs/min |
+| Años con soft-block | 12 de 20 (saturación de pool JSF) |
+| Velocidad en retry (concurrency 1) | 105–120 docs/min por año |
+
+### El problema del pool JSF en runs paralelos
+
+Cuando 12 workers arrancan y abren sesiones JSF simultáneamente, el servidor no puede mantener todos los ViewState slots activos. Algunos workers empiezan a recibir respuestas AJAX vacías — el portal no emite HTTP 429, simplemente devuelve HTML vacío.
+
+El scraper detecta 3 respuestas vacías consecutivas (`CONSECUTIVE_EMPTY_ABORT = 3`), guarda un checkpoint y termina con exit 1. Esto es un **soft-block**, no un crash.
+
+```mermaid
+flowchart LR
+    A["12 workers\narrancan juntos"] --> B["Pool JSF\nsatura slots"]
+    B --> C["AJAX response\nvacía × 3"]
+    C --> D["soft_block_abort\nexit 1 + checkpoint"]
+    D --> E["npm run\nscrape:pjperu:suprema:years:retry\n--concurrency 1"]
+    E --> F["1 worker\nsin competencia\n118 docs/min"]
+```
+
+Ver `docs/retry-policy.md` para el análisis completo, con datos empíricos y comparativa de velocidad.
+
+### Comandos
+
+```bash
+# Primera extracción — 20 años, 12 workers en paralelo (~1.5h con VPN)
+npm run scrape:pjperu:suprema:years
+
+# Dry-run — valida sin escribir datos (~2 min con VPN)
+npm run scrape:pjperu:suprema:years:dry
+
+# Test acotado — 4 años recientes, max 500 docs por año (~10 min con VPN)
+npm run scrape:pjperu:suprema:years:test
+
+# Retry de años con soft-block — concurrency 1, sin saturación de pool
+npm run scrape:pjperu:suprema:years:retry
+
+# Retomar si se interrumpe por red o VPN
+npm run scrape:pjperu:suprema:years:resume
+```
 
 ### Arquitectura Paralela — Diagrama Excalidraw
 
