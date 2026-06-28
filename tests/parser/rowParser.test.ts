@@ -1,4 +1,4 @@
-// Tests for src/parser/rowParser.ts — parseRows() with richfacesRepeat config.
+// Tests for src/parser/rowParser.ts — parseRows() with richfacesRepeat and table configs.
 // Key invariant: selector is div.rf-p (stable class) — works with ANY j_idt suffix.
 
 import { describe, it, expect } from 'vitest';
@@ -101,5 +101,133 @@ describe('parseRows — richfacesRepeat', () => {
     const html = fullPanelHtml.replace('/jurisprudenciaweb/ServletDescarga?uuid=abc-123', abs);
     const [row] = parseRows(load(html), mockConfig, BASE_URL);
     expect(row.pdfUrl).toBe(abs);
+  });
+
+  it('extracts fallo and juecesRaw from labeled panel fields', () => {
+    const html = `
+    <div class="rf-p" id="formBuscador:repeat:0:j_idt001">
+      <div class="rf-p-hdr">
+        <span style="font-weight:bold">Casación</span>
+        <span style="font-weight:bold">00123-2024</span>
+      </div>
+      <div class="rf-p-b">
+        <div class="txtbold">Pretensión/Delito:</div><div>Demanda</div>
+        <div class="txtbold">Fallo de la Resolución:</div><div>Confirmada</div>
+        <div class="txtbold">Jueces:</div><div>García, Pérez, Rodríguez</div>
+      </div>
+    </div>`;
+    const [row] = parseRows(load(html), mockConfig, BASE_URL);
+    expect(row.fallo).toBe('Confirmada');
+    expect(row.juecesRaw).toBe('García, Pérez, Rodríguez');
+  });
+
+  it('filters out panels where all cells are empty strings', () => {
+    const emptyPanel = `
+    <div class="rf-p" id="formBuscador:repeat:0:j_idt002">
+      <div class="rf-p-hdr"></div>
+      <div class="rf-p-b"></div>
+    </div>`;
+    const rows = parseRows(load(emptyPanel), mockConfig, BASE_URL);
+    expect(rows).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OEFA — standard table rows with tr[data-ri]
+// ---------------------------------------------------------------------------
+
+const OEFA_BASE = 'https://www.oefa.gob.pe';
+
+const oefaConfig: SiteConfig = {
+  name: 'oefa',
+  baseUrl: OEFA_BASE,
+  startUrl: `${OEFA_BASE}/tfa`,
+  rowParser: 'table',
+  columns: { caseNumber: 0, summary: 1, date: 2, resolution: 3 },
+  timing: { pageDelayMs: [0,0], pdfDelayMs: [0,0], retryWaitMs: [0,0,0], navigationTimeoutMs: 0, selectorTimeoutMs: 0 },
+  selectors: {
+    rows: 'tr[data-ri]',
+    cells: 'td',
+    caseNumber: 'td:nth-child(1)',
+    court: 'td:nth-child(2)',
+    date: 'td:nth-child(3)',
+    summary: 'td:nth-child(4)',
+    pdfLink: 'a[href$=".pdf"]',
+    nextButton: 'a.ui-paginator-next',
+    currentPage: null,
+    totalPages: null,
+    noResults: null,
+  },
+} as SiteConfig;
+
+const oefaTableHtml = `
+<table>
+  <tbody>
+    <tr data-ri="0">
+      <td>EXP-001</td>
+      <td>MINERIA S.A.</td>
+      <td>2024-01-15</td>
+      <td>Resolución 123</td>
+      <td><a href="/oefa/docs/file.pdf">PDF</a></td>
+    </tr>
+    <tr data-ri="1">
+      <td>EXP-002</td>
+      <td>HIDRO PERU</td>
+      <td>2024-02-20</td>
+      <td>Resolución 456</td>
+      <td><a href="https://www.oefa.gob.pe/docs/abs.pdf">PDF</a></td>
+    </tr>
+  </tbody>
+</table>
+`;
+
+describe('parseRows — OEFA table', () => {
+  it('extracts all rows from tr[data-ri] elements', () => {
+    const rows = parseRows(load(oefaTableHtml), oefaConfig, OEFA_BASE);
+    expect(rows).toHaveLength(2);
+  });
+
+  it('extracts cell text correctly for each row', () => {
+    const rows = parseRows(load(oefaTableHtml), oefaConfig, OEFA_BASE);
+    expect(rows[0].cells[0]).toBe('EXP-001');
+    expect(rows[0].cells[1]).toBe('MINERIA S.A.');
+    expect(rows[0].cells[2]).toBe('2024-01-15');
+    expect(rows[0].cells[3]).toBe('Resolución 123');
+    expect(rows[1].cells[0]).toBe('EXP-002');
+  });
+
+  it('builds absolute pdfUrl from relative href', () => {
+    const rows = parseRows(load(oefaTableHtml), oefaConfig, OEFA_BASE);
+    expect(rows[0].pdfUrl).toBe(`${OEFA_BASE}/oefa/docs/file.pdf`);
+  });
+
+  it('keeps already-absolute pdfUrl unchanged', () => {
+    const rows = parseRows(load(oefaTableHtml), oefaConfig, OEFA_BASE);
+    expect(rows[1].pdfUrl).toBe('https://www.oefa.gob.pe/docs/abs.pdf');
+  });
+
+  it('sets pdfJsfAction to null for plain href links', () => {
+    const rows = parseRows(load(oefaTableHtml), oefaConfig, OEFA_BASE);
+    expect(rows[0].pdfJsfAction).toBeNull();
+  });
+
+  it('filters rows where all cells are empty', () => {
+    const html = `
+      <table><tbody>
+        <tr data-ri="0"><td></td><td></td><td></td></tr>
+        <tr data-ri="1"><td>EXP-003</td><td>EMPRESA</td><td>2024-03-01</td></tr>
+      </tbody></table>`;
+    const rows = parseRows(load(html), oefaConfig, OEFA_BASE);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].cells[0]).toBe('EXP-003');
+  });
+
+  it('sets pdfUrl to null when no matching pdf link exists in row', () => {
+    const html = `
+      <table><tbody>
+        <tr data-ri="0"><td>EXP-004</td><td>EMPRESA</td><td>2024-04-01</td><td><a href="#">Ver</a></td></tr>
+      </tbody></table>`;
+    const [row] = parseRows(load(html), oefaConfig, OEFA_BASE);
+    expect(row.pdfUrl).toBeNull();
   });
 });

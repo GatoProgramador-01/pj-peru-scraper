@@ -3,6 +3,7 @@ import type { JudicialDocument, SiteConfig } from '../types.js';
 import { normDate } from '../utils/date.js';
 import { buildId } from '../utils/fileName.js';
 
+/** Carry-along context injected into every row-to-document mapping call (site, position, column layout). */
 export interface DocumentMappingCtx {
   site: string;
   pageIndex: number;

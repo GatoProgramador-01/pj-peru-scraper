@@ -1,21 +1,27 @@
 import type { $Root } from '../models/internalTypes.js';
 
+/** Resolved paginator state extracted from the current HTML fragment. */
+export type PaginatorInfo = { currentPage: number; totalPages: number; totalRecords: number };
+
 export const extractPaginatorId = ($: $Root): string | null =>
   $('[id*="paginator"], [id*="pager"], .ui-paginator').first().attr('id') ?? null;
 
-export const parsePaginatorText = ($: $Root): { currentPage: number; totalPages: number; totalRecords: number } | null => {
-  // PrimeFaces paginator text: "Página N de M (K registros)"
+/** PrimeFaces paginator text: "Página N de M (K registros)". */
+const parsePrimeFacesPaginator = ($: $Root): PaginatorInfo | null => {
   const text = $('.ui-paginator-current').first().text().trim();
   const m = text.match(/P[aá]gina\s+(\d+)\s+de\s+(\d+)\s*\((\d+)\s+registros?\)/i);
-  if (m) return { currentPage: parseInt(m[1], 10), totalPages: parseInt(m[2], 10), totalRecords: parseInt(m[3], 10) };
+  if (!m) return null;
+  return { currentPage: parseInt(m[1], 10), totalPages: parseInt(m[2], 10), totalRecords: parseInt(m[3], 10) };
+};
 
-  // RichFaces DataScroller (pj-peru): scan ALL scripts for maxValue or "max" key in DataScroller config.
-  // maxValue is only present on the initial full-page load — AJAX partial responses won't have it.
+/** RichFaces DataScroller page count (pj-peru): extracted from embedded script config.
+ *  Only present on initial full-page load — AJAX partial responses won't have it. */
+const parseRichFacesPageCount = ($: $Root): { totalPages: number | null; totalRecords: number | null } => {
   const allScripts = $('script').map((_, el) => $(el).html() ?? '').get().join('\n');
   const maxMatch = allScripts.match(/"maxValue"\s*:\s*(\d+)/) ?? allScripts.match(/"max"\s*:\s*(\d+)/);
   const totalPages = maxMatch ? parseInt(maxMatch[1], 10) : null;
 
-  // RichFaces result count: try multiple selectors and text patterns used by pj-peru portal
+  // Try multiple selectors and text patterns used by pj-peru portal.
   const candidateText = [
     $('[id*="optResultado"]').text(),
     $('[id*="resultado"]').text(),
@@ -34,11 +40,27 @@ export const parsePaginatorText = ($: $Root): { currentPage: number; totalPages:
     if (cm) { totalRecords = parseInt(cm[1].replace(/[,.]/g, ''), 10); break; }
   }
 
-  const currentMatch = $('[id$="_ds_nmb-btn_active"], .rf-ds-act').first().text();
-  const currentPage = currentMatch ? (parseInt(currentMatch.trim(), 10) || 1) : null;
+  return { totalPages, totalRecords };
+};
 
-  if (totalPages) return { currentPage: currentPage ?? 1, totalPages, totalRecords: totalRecords ?? totalPages * 10 };
-  return null;
+/** RichFaces active page button: reads the highlighted page number from the DataScroller. */
+const parseRichFacesCurrentPage = ($: $Root): number => {
+  const currentMatch = $('[id$="_ds_nmb-btn_active"], .rf-ds-act').first().text();
+  return currentMatch ? (parseInt(currentMatch.trim(), 10) || 1) : 1;
+};
+
+/** Combines RichFaces page count and current-page strategies into a single PaginatorInfo. */
+const parseRichFacesPaginator = ($: $Root): PaginatorInfo | null => {
+  const { totalPages, totalRecords } = parseRichFacesPageCount($);
+  if (!totalPages) return null;
+  const currentPage = parseRichFacesCurrentPage($);
+  return { currentPage, totalPages, totalRecords: totalRecords ?? totalPages * 10 };
+};
+
+export const parsePaginatorText = ($: $Root): PaginatorInfo | null => {
+  const primeFaces = parsePrimeFacesPaginator($);
+  if (primeFaces) return primeFaces;
+  return parseRichFacesPaginator($);
 };
 
 export const pageHasNext = ($: $Root): boolean => {

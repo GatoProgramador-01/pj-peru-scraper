@@ -7,11 +7,13 @@ import type { PageEvent, PdfDownloadResult, PdfFailure, RunMetrics } from '../mo
 import { pdfFailureFromDocument } from '../models/metrics.js';
 import type { JudicialDocument, ScrapeOptions, SiteConfig } from '../types.js';
 
+/** Outcome of scraping one sector: document count and collected records. */
 export interface SectorResult {
   count: number;
   docs: JudicialDocument[];
 }
 
+/** Mutable runtime state shared across all pages of a single sector scrape (metrics, events, limits). */
 export interface SectorContext {
   sectorId: string | null;
   sectorName: string | null;

@@ -2,6 +2,13 @@ import type { $Root, ParsedRow } from '../models/internalTypes.js';
 import type { SiteConfig } from '../types.js';
 import { parseJsfActionLink } from '../jsf/actionLink.js';
 
+/** Resolves a raw href to an absolute URL; returns null for missing, void, or JS-only hrefs. */
+const resolveAbsoluteUrl = (href: string | null, baseUrl: string): string | null => {
+  if (!href || href === '#' || href.startsWith('javascript')) return null;
+  if (href.startsWith('http')) return href;
+  return `${baseUrl}${href.startsWith('/') ? '' : '/'}${href}`;
+};
+
 /** Parse labeled div blocks like <div class="txtbold">Label:</div><div>Value</div>. */
 const extractLabeledField = ($: $Root, container: ReturnType<$Root>, label: string): string => {
   const block = container.find('.txtbold').filter((_, el) => $(el).text().trim().startsWith(label));
@@ -39,9 +46,7 @@ const parseRichFacesRepeatRows = ($: $Root, baseUrl: string): ParsedRow[] => {
 
     const pdfAnchor = $el.find('a[href*="ServletDescarga"]').first();
     const rawHref = pdfAnchor.attr('href') ?? null;
-    const pdfUrl = rawHref
-      ? (rawHref.startsWith('http') ? rawHref : `${baseUrl}${rawHref.startsWith('/') ? '' : '/'}${rawHref}`)
-      : null;
+    const pdfUrl = resolveAbsoluteUrl(rawHref, baseUrl);
 
     const cells = [tipoRecurso, expediente, pretension, tipoResolucion, fechaResolucion, sala, sumilla];
     return {
@@ -62,13 +67,8 @@ export const parseRows = ($: $Root, config: SiteConfig, baseUrl: string): Parsed
       const cells = $(tr).find('td').toArray().map(td => $(td).text().trim());
       const pdfEl = $(tr).find(config.selectors.pdfLink).first();
       const rawHref = pdfEl.attr('href') ?? null;
-      const isAnchorOrVoid = !rawHref || rawHref === '#' || rawHref.startsWith('javascript');
-      const pdfUrl = isAnchorOrVoid
-        ? null
-        : rawHref.startsWith('http')
-          ? rawHref
-          : `${baseUrl}/${rawHref.replace(/^\//, '')}`;
-      const pdfJsfAction = isAnchorOrVoid ? parseJsfActionLink(pdfEl.attr('onclick')) : null;
+      const pdfUrl = resolveAbsoluteUrl(rawHref, baseUrl);
+      const pdfJsfAction = pdfUrl === null ? parseJsfActionLink(pdfEl.attr('onclick')) : null;
       return { cells, pdfUrl, pdfJsfAction } satisfies ParsedRow;
     })
     .filter(row => row.cells.some(c => c.length > 0));

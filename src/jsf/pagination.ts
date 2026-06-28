@@ -5,6 +5,7 @@ import { absorbCookies, cookieHeader } from '../session/cookies.js';
 import { isRateLimited } from '../session/rateLimit.js';
 import { extractPartialResponse } from './partialResponse.js';
 
+/** Parameters that drive a single AJAX page-turn POST (target index, row size, JSF variant). */
 export interface PaginationRequest {
   page: ParsedPage;
   targetPageIndex: number;

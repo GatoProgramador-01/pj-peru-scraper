@@ -1,6 +1,7 @@
 // Expected record count: 1,000–50,000+ per site across all sectors
 // Data source: PJ Peru jurisprudencia + OEFA TFA portals (JSF/PrimeFaces)
 
+/** Normalized output record for a single jurisprudence result, shared across all scraped portals. */
 export interface JudicialDocument {
   id: string;              // Unique ID: <site>[_S<sectorId>]_<caseNumber>_<date>
   site: string;            // 'pj-peru' | 'oefa'
@@ -44,6 +45,7 @@ export interface Selectors {
   noResults: string | null;
 }
 
+/** Jitter and timeout knobs that control request pacing and browser wait budgets. */
 export interface TimingConfig {
   pageDelayMs: [number, number];          // [min, max] jitter between page turns
   pdfDelayMs: [number, number];           // jitter between PDF downloads
@@ -71,7 +73,7 @@ export interface SearchConfig {
   sectors?: Record<string, string>;
 }
 
-/** Maps semantic field names to 0-based column indices in rawCells. */
+/** Maps semantic field names to 0-based column indices within a row's rawCells array. */
 export interface ColumnMap {
   caseNumber: number;
   court?: number;
@@ -81,6 +83,7 @@ export interface ColumnMap {
   pdfColIndex?: number;
 }
 
+/** Full static configuration for a single scraping target (OEFA, pj-peru, etc.). */
 export interface SiteConfig {
   name: string;
   baseUrl: string;
@@ -95,6 +98,7 @@ export interface SiteConfig {
   rowParser?: 'table' | 'richfacesRepeat';
 }
 
+/** Runtime CLI options that control a single scraping run (sector, limits, output paths, flags). */
 export interface ScrapeOptions {
   site: string;
   outputPath: string;

@@ -47,7 +47,7 @@ afterEach(() => {
 describe('downloadPdf', () => {
   it('returns missingPdfUrl when doc.pdfUrl is null — no HTTP call', async () => {
     const session = makeSession();
-    const p = downloadPdf(session as any, makeDoc({ pdfUrl: null }), pdfDir, WAITS);
+    const p = downloadPdf(session as any, makeDoc({ pdfUrl: null }), { pdfDir, retryWaitMs: WAITS });
     await vi.runAllTimersAsync();
     const result = await p;
     expect(result.status).toBe('missingPdfUrl');
@@ -61,7 +61,7 @@ describe('downloadPdf', () => {
     const localPath = path.join(pdfDir, `${doc.id}.pdf`);
     fs.writeFileSync(localPath, Buffer.from('%PDF-existing'));
 
-    const p = downloadPdf(session as any, doc, pdfDir, WAITS);
+    const p = downloadPdf(session as any, doc, { pdfDir, retryWaitMs: WAITS });
     await vi.runAllTimersAsync();
     const result = await p;
     expect(result.status).toBe('skippedExisting');
@@ -75,7 +75,7 @@ describe('downloadPdf', () => {
     const pdfBytes = Buffer.from('%PDF-1.4 fake content');
     session.client.get.mockResolvedValueOnce({ data: pdfBytes.buffer });
 
-    const p = downloadPdf(session as any, doc, pdfDir, WAITS);
+    const p = downloadPdf(session as any, doc, { pdfDir, retryWaitMs: WAITS });
     await vi.runAllTimersAsync();
     const result = await p;
     expect(result.status).toBe('downloaded');
@@ -90,7 +90,7 @@ describe('downloadPdf', () => {
       .mockRejectedValueOnce(new Error('network error'))
       .mockRejectedValueOnce(new Error('network error'));
 
-    const p = downloadPdf(session as any, makeDoc(), pdfDir, WAITS);
+    const p = downloadPdf(session as any, makeDoc(), { pdfDir, retryWaitMs: WAITS });
     await vi.runAllTimersAsync();
     const result = await p;
     expect(result.status).toBe('failedDownload');

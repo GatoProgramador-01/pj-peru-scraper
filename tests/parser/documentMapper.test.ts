@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { rowToDocument } from '../../src/parser/documentMapper.js';
+import type { DocumentMappingCtx } from '../../src/parser/documentMapper.js';
 import type { ParsedRow } from '../../src/models/internalTypes.js';
 import type { ColumnMap } from '../../src/types.js';
 
@@ -27,7 +28,15 @@ const makeRow = (overrides: Partial<ParsedRow> = {}): ParsedRow => ({
   ...overrides,
 });
 
-const mapper = rowToDocument('pj-peru', 0, columns, null, 'CIVIL');
+const ctx: DocumentMappingCtx = {
+  site: 'pj-peru',
+  pageIndex: 0,
+  columns,
+  sectorId: null,
+  sectorName: 'CIVIL',
+};
+
+const mapper = rowToDocument(ctx);
 
 describe('rowToDocument', () => {
   it('maps cells to correct fields via column indices', () => {
@@ -80,8 +89,8 @@ describe('rowToDocument', () => {
   });
 
   it('id changes when sectorId differs', () => {
-    const withSector = rowToDocument('pj-peru', 0, columns, '2', 'SUPERIOR')(makeRow(), 0);
-    const noSector   = rowToDocument('pj-peru', 0, columns, null, 'SUPERIOR')(makeRow(), 0);
+    const withSector = rowToDocument({ ...ctx, sectorId: '2', sectorName: 'SUPERIOR' })(makeRow(), 0);
+    const noSector   = rowToDocument({ ...ctx, sectorId: null, sectorName: 'SUPERIOR' })(makeRow(), 0);
     expect(withSector.id).not.toBe(noSector.id);
   });
 
@@ -92,5 +101,23 @@ describe('rowToDocument', () => {
 
   it('pdfLocalPath is always null at mapping time', () => {
     expect(mapper(makeRow(), 0).pdfLocalPath).toBeNull();
+  });
+
+  it('splits juecesRaw by comma into jueces array', () => {
+    const row = makeRow({ juecesRaw: 'García López, Pérez Torres, Rodríguez Díaz' });
+    const doc = mapper(row, 0);
+    expect(doc.jueces).toEqual(['García López', 'Pérez Torres', 'Rodríguez Díaz']);
+  });
+
+  it('sets jueces to null when juecesRaw is absent', () => {
+    const row = makeRow({ juecesRaw: undefined });
+    expect(mapper(row, 0).jueces).toBeNull();
+  });
+
+  it('pageIndex comes from ctx and rowIndex from position argument', () => {
+    const ctxPage3: DocumentMappingCtx = { ...ctx, pageIndex: 3 };
+    const doc = rowToDocument(ctxPage3)(makeRow(), 5);
+    expect(doc.pageIndex).toBe(3);
+    expect(doc.rowIndex).toBe(5);
   });
 });
