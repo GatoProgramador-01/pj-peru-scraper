@@ -1,35 +1,6 @@
-﻿# pj-peru-scraper
+# pj-peru-scraper
 
 Scraper HTTP en TypeScript para portales JSF peruanos, sin automatizacion de navegador. Soporta dos variantes: OEFA (PrimeFaces) y PJ Peru (RichFaces). Ambos sitios validados con extraccion real y descarga de PDFs.
-
-## Resumen Ejecutivo
-
-El desafio pide extraer documentos, navegar paginas, descargar PDFs y manejar rate limiting HTTP 429. El scraper cubre dos portales con tecnologias JSF distintas — el mismo nucleo de sesion, ViewState y retry/backoff funciona en ambos.
-
-| Requisito | Estado | Evidencia |
-| --- | --- | --- |
-| TypeScript | Cumplido | `src/**/*.ts`, `npm run build` |
-| Sin browser automation | Cumplido | `axios` + `cheerio`; no Puppeteer/Playwright/Selenium |
-| Navegacion/paginacion | Cumplido — OEFA y PJ Peru | PrimeFaces (OEFA) y RichFaces DataScroller (PJ Peru) |
-| Extraccion de datos | Cumplido — ambos sitios | JSONL con campos normalizados y `rawCells` |
-| Descarga de PDFs | Cumplido — ambos sitios | OEFA: accion JSF POST · PJ Peru: GET `/ServletDescarga?uuid=` |
-| PDFs no disponibles | Cumplido | `confidential` separado de `failedDownload` |
-| Manejo 429 con backoff | Cumplido | `npm run simulate:429` valida 429 recuperable y persistente |
-| Registro de fallos reintentables | Cumplido | `failed-pdfs.json` |
-| OEFA — sitio alternativo | Validado (1,724 docs, 5 sectores, 0 HTTP 429) | `output/mineria/`, `output/hidrocarburos/`, etc. |
-| PJ Peru — sitio principal | Validado con VPN Peru (100 docs, 10 paginas, 100 PDFs ok) | `output/pjperu/pj-peru-100.jsonl` |
-
-## Estado Actual Para Revision
-
-Este repositorio esta preparado para evaluacion humana como scraper HTTP de produccion controlada:
-
-- El sitio principal PJ Peru requiere VPN a Peru antes de cualquier ejecución real.
-- No se usa automatizacion de navegador; todo el flujo usa requests HTTP y parsing HTML.
-- Las ejecuciones PJ Peru escriben en carpetas con timestamp bajo `output/runs/`.
-- No usar `--fresh-output` para PJ Peru: los runners nuevos evitan borrar artefactos previos.
-- No hace falta descargar todo el portal para la entrega; el desafio pide demostrar que el scraper puede hacerlo si se deja corriendo.
-- Guia corta de evaluacion: `docs/interview-deliverable.md`.
-- Plan de prueba desde clone limpio: `docs/human-test-plan.md`.
 
 ## Quick Start
 
@@ -113,21 +84,6 @@ flowchart TD
     RfPaginator --> Page
     Next -->|No| Reports
 ```
-
-Modulos clave:
-
-| Modulo | Responsabilidad |
-| --- | --- |
-| `src/cli.ts` | Flags, validacion de argumentos y arranque |
-| `src/config.ts` | Configuracion por sitio: URL, selectores, columnas, tiempos, `rowParser` |
-| `src/session/*` | Axios, cookies, deteccion de rate limit, retry/backoff |
-| `src/jsf/*` | Formularios, paginacion PrimeFaces y RichFaces, respuestas parciales JSF |
-| `src/parser/*` | HTML a pagina, filas `<tr>` o div-repeat, documentos |
-| `src/scraper/*` | Orquestacion por sitio/sector/pagina; multi-proceso paralelo |
-| `src/pdf/downloader.ts` | Descarga directa (PJ Peru) y por accion JSF (OEFA) |
-| `src/output/runReport.ts` | Artefactos de auditoria |
-| `scripts/parallel-sectors.mjs` | Lanza N procesos Node en paralelo, uno por sector |
-| `src/tools/simulate429.ts` | Validacion local de 429 |
 
 ## Flujo De PDFs
 
@@ -270,62 +226,6 @@ flowchart LR
 | `failed-pdfs.json` | Inventario de confidenciales, missing y fallos reales |
 | `checkpoint_*.json` | Estado para `--resume` |
 
-## Evidencia Local Observada
-
-Resultados reales de ejecuciones en el workspace. Para entrega formal, usar una carpeta nueva de salida o los runners con timestamp; no usar `--fresh-output` en PJ Peru.
-
-### OEFA — Sitio alternativo (PrimeFaces/JSF, sin VPN)
-
-| Sector | Docs | PDFs ok | Confidenciales | Fallos reales | HTTP 429 | Duracion |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| MINERIA (1) | 840 | 786 | 44 | 10 | 0 | 3m0s |
-| HIDROCARBUROS (3) | 434 | 397 | 33 | 4 | 0 | 4m11s |
-| PESQUERIA (8) | 255 | 233 | 16 | 6 | 0 | 2m13s |
-| ELECTRICIDAD (2) | 125 | 100 | 25 | 0 | 0 | 2m0s |
-| INDUSTRIA (9) | 90 | 79 | 11 | 0 | 0 | 40s |
-| **Total OEFA** | **1,744** | | | | **0** | |
-
-Con `scrape:oefa:parallel`: todos los sectores en paralelo, tiempo total = sector mas lento (~3 min).
-
-### PJ Peru — Sitio principal (RichFaces/JSF, requiere VPN Peru)
-
-| ejecución | Docs | PDFs ok | Fallos | HTTP 429 | Duracion |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Prueba inicial (5 docs) | 5 | 5 | 0 | 0 | 35s |
-| ejecución validacion (100 docs, 10 paginas) | 100 | 100 | 0 | 0 | ~7m |
-| Test distritos v1 — 20 workers, pdf-concurrency 20 | 1,350 | 50 | 10/34 (29%)* | 0 | ~3.5m |
-| Test distritos v2 — 20 workers, pdf-concurrency 5 | 1,200 | 50† | 10/34 (29%) | 0 | ~5m |
-| Test distritos v3 — 12 workers, pdf-concurrency 5 | 1,500 | 50† | 4/34 (12%) | 0 | ~8m |
-| Validacion PDF aislada — Lima (d18), 20 docs, fresh dir | 20 | 20 | 0 | 0 | ~1m33s |
-| **Produccion v4 — 12 workers, pdf-conc 15 (en curso 2026-06-27)** | **54,480+** | **4,105+** | **6/34 (18%)‡** | **0** | **~2h** |
-
-> *Root cause: 400 conexiones simultaneas a `/ServletDescarga` (20 workers × 20 pdf-conc) → saturacion. Fix: pdf-concurrency 5 por worker.
-> †PDFs contados como `skippedExisting` porque el directorio compartido ya tenia los archivos de ejecuciones anteriores. Test aislado de Lima confirma 20/20 descargados, 45 PDFs/min, latencia avg 2055ms, 100% headers `%PDF-` validos.
-> ‡6 distritos (AYACUCHO=80 docs, CALLAO=80, LIMA\_NORTE=90, CANETE=170, AMAZONAS=210, HUANUCO=200) terminaron temprano por saturacion de sesion JSF en el primer batch de 12 workers simultaneos. Son reintentables individualmente (ver seccion "Retry De Distritos Fallidos").
-
-**PDF integrity check (10 muestras de `output/pjperu-districts/pdfs/`):** 10/10 headers `%PDF-` validos, 282–1005 KB por archivo, 0 corruptos.
-
-**Escala real del dataset (medida en vivo):**
-
-| Corte | Docs totales | Paginas (10/pag) | Con PDFs (20 conc.) | Sin PDFs | Con paralelismo distrital |
-| --- | ---: | ---: | --- | --- | --- |
-| Suprema (buCorte=1) | 207,527 | 20,753 | ~17h | ~4h | — (1 corte nacional) |
-| Superior — sin paralelismo | ~458,909 | ~45,891 | ~76h | ~18h | — |
-| Superior — 34 distritos x 20 workers | ~458,909 | ~45,891 | ~8h | ~2h | 34x speedup |
-| **Ambas estrategias combinadas** | **~666,436** | **~66,644** | **~17h** | **~4h** | max(Suprema, Superior) |
-
-Estimacion de speedup: 34 distritos con 20 workers = 2 rondas de ~90min c/u. El bottleneck pasa a ser Suprema (~4h JSONL only).
-
-- PDFs via GET directo: `/jurisprudenciaweb/ServletDescarga?uuid=...` (298–453 KB por PDF)
-- 0 HTTP 429 observados en ninguna ejecución; el servidor usa saturacion silenciosa (empty AJAX / HTTP 500), no 429.
-- Checkpoints por distrito: `output/checkpoint_pj-peru_s2_d18.json` — reanudar con `--resume`.
-
-Notas generales:
-
-- `Confidenciales` en OEFA no son fallas del scraper; OEFA no expone esos PDFs.
-- `Fallos reales` quedan en `failed-pdfs.json` como `failedDownload` y son reintentables.
-- 0 HTTP 429 reales en ambos sitios; `simulate:429` provee evidencia deterministica del comportamiento.
-
 ## Opciones Del CLI
 
 | Opcion | Uso |
@@ -442,7 +342,7 @@ El archivo `docs/parallel-architecture.excalidraw` contiene el diagrama completo
 
 Para abrir: importar en [excalidraw.com](https://excalidraw.com) o instalar la extension Excalidraw en VS Code.
 
-### Optimizacion PDF: Skip Existing y Two-Phase Strategy
+## Optimizacion PDF: Skip Existing y Two-Phase Strategy
 
 El downloader siempre revisa si el PDF ya existe en disco antes de hacer la peticion HTTP. Si existe, lo marca como `skippedExisting` y sigue. Esto significa que:
 
@@ -538,189 +438,20 @@ node dist/cli.js --site pj-peru --limit 10 --dry-run
 node dist/cli.js --site pj-peru --limit 100 --pdfs --pdf-dir output/pjperu/pdfs --out output/pjperu/pj-peru-documents.jsonl
 ```
 
-## Ver Ficha — Campos Adicionales Del Portal
+## Modulos Clave
 
-El modal "Ver Ficha" (boton en la tabla de resultados) expone campos que no estan en las columnas visibles. Captura real de la interfaz (2026-06-27):
-
-| Seccion | Campo | Ejemplo | Estado |
-| --- | --- | --- | --- |
-| DATOS DE LA RESOLUCION | `fechaResolucion` | 26/06/2026 | Pendiente implementar |
-| DATOS DE LA RESOLUCION | `tipoResolucion` | Sentencia de Vista | Pendiente implementar |
-| DATOS DE LA RESOLUCION | `fallo` | Confirmada | Pendiente implementar |
-| DATOS DE LA RESOLUCION | `jueces` | [array de nombres] | Pendiente implementar |
-| DATOS DE LA RESOLUCION | `ponente` | *** (confidencial) | No expuesto por portal |
-| DATOS DE LA RESOLUCION | `dirimente` | *** (confidencial) | No expuesto por portal |
-| DATOS DE LA RESOLUCION | `sumilla` | Texto largo | **Ya extraido del panel** |
-| DATOS DEL PROCESO | `especialidad` | Familia Civil | Pendiente implementar |
-| DATOS DEL PROCESO | `organoJurisdiccional` | 1° SALA MIXTA - Sede Sicuani | Pendiente implementar |
-| DATOS DEL PROCESO | `pretensionDelito` | DIVORCIO POR CAUSAL | Pendiente implementar |
-| DATOS DEL PROCESO | `proceso` | Conocimiento | Pendiente implementar |
-| DATOS DEL PROCESO | `palabrasClave` | CONFIRMARON, CONFIRMA... | **Ya extraido del panel** |
-| DATOS DE PROCEDENCIA | `distritoJudicialProcedencia` | Cusco | Pendiente implementar |
-| DATOS DE PROCEDENCIA | `expedienteProcedencia` | 235-2025-0 | Pendiente implementar |
-| DATOS DE PROCEDENCIA | `fechaResolucionProcedencia` | 13/01/2026 | Pendiente implementar |
-| DATOS DE PROCEDENCIA | `falloProcedencia` | Improcedente | Pendiente implementar |
-
-`ponente` y `dirimente` aparecen como `***` — el portal no los expone, no es un bug del scraper.
-
-Para implementar la extraccion de ficha: el boton "Ver Ficha" dispara un POST AJAX JSF. El scraper necesita conocer el `javax.faces.source` (ID del componente que emite el evento). Ese ID cambia segun la fila y la sesion, y solo se puede obtener capturando el request real.
-
-**Instrucciones de captura (una sola vez, con VPN activa):**
-
-1. Abrir el portal en Chrome con VPN Peru activa.
-2. Buscar cualquier caso — aparecen los resultados en la tabla.
-3. Abrir DevTools → tab **Network** → filtrar por **Fetch/XHR**.
-4. Hacer click en el boton "Ver Ficha" de cualquier fila.
-5. En la lista de requests, buscar un POST a `resultado.xhtml`.
-6. Click en ese request → tab **Payload** → copiar todo el Form Data.
-7. Tab **Response** → copiar el HTML de respuesta.
-8. Pegar ambos en el chat.
-
-Lo que necesitamos del Form Data:
-```
-javax.faces.source     → ID del componente (ej: "formBuscador:repeat:0:j_idt789")
-javax.faces.partial.execute  → componentes a ejecutar
-javax.faces.partial.render   → panel que renderiza la ficha
-javax.faces.ViewState  → ViewState activo
-```
-
-Con esos valores podemos implementar `src/jsf/fichaFetcher.ts` en ~1 sesion y agregar los 10 campos al JSONL automaticamente durante el scrape.
-
-## Agenda Proxima Sesion
-
-**Estado al 2026-06-27 (produccion v4 corriendo):**
-
-- 54,480+ docs extraidos | 4,105+ PDFs descargados | run activo con 12 workers
-- 18 de 34 distritos completados; 6 fallidos por saturacion JSF primer batch
-- El portal muestra 7,168 paginas por distrito → ~71,680 docs/distrito. Limite de tests ajustado a 500 docs para representar mejor la carga real.
-- VPN Peru activa durante el run actual
-
-**Tasa de exito por concurrencia (historico):**
-
-| Workers | Exitosos | Tasa | Estado |
-| ---: | ---: | --- | --- |
-| 20 (sin jitter) | 24/34 | 71% | descartado |
-| 12 (con jitter) | 28/34 | 82% | bueno, 6 fallidos por saturacion primer batch |
-| 12 + delay 300-700ms | validando en v4 | en curso | objetivo 34/34 en retry individual |
-
-**Proximos pasos (en orden):**
-
-1. **Esperar fin de v4** y contar distritos completados con >4,000 docs.
-2. **Retry 6 distritos fallidos** uno por uno con `--concurrency 1`:
-   ```bash
-   for D in 5 7 9 8 1 12; do
-     node dist/cli.js --site pj-peru --sector 2 --district $D \
-       --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 15 \
-       --out output/pjperu-districts/district-${D}-retry.jsonl
-   done
-   ```
-3. **Calibrar limite de tests a 500 docs** (50 paginas × 10 docs) en lugar de 50 — mas representativo de la carga real del portal (7,168 paginas por distrito).
-4. **Implementar `fichaFetcher`** — capturar con DevTools el POST AJAX del boton "Ver Ficha" para agregar los 10 campos nuevos al JSONL.
-5. **Implementar `pdf-only.mjs`** — descarga de PDFs desde JSONL existente sin re-navegar JSF. Desbloquea concurrencia de 50+ sin tocar el pool de sesiones.
-6. **Fusionar** `output/pjperu-districts/district-*.jsonl` en `all-districts.jsonl` y cargar a MongoDB.
-
-**Comando de inicio proxima sesion (con VPN activa):**
-```bash
-# Verificar VPN y estado del portal
-node dist/cli.js --site pj-peru --dry-run --limit 5
-
-# Retry distritos fallidos (uno por uno, sin competencia)
-for D in 5 7 9 8 1 12; do
-  node dist/cli.js --site pj-peru --sector 2 --district $D \
-    --pdfs --pdf-dir output/pjperu-districts/pdfs --pdf-concurrency 15 \
-    --out output/pjperu-districts/district-${D}-retry.jsonl
-done
-
-# Test de 500 docs (calibracion de carga real)
-node scripts/parallel-districts.mjs --limit 500 --concurrency 12 --pdf-concurrency 15
-```
-
-## Checklist De Entrega
-
-1. `npm run build` — sin errores TypeScript.
-2. `npm run simulate:429` — confirmar que salida muestra `"ok": true`.
-3. `npm run scrape:oefa:test100` — ejecución OEFA limpia de 100 docs.
-4. `node dist/cli.js --site pj-peru --dry-run --limit 20` (con VPN peru) — confirmar 2+ paginas.
-5. `npm run scrape:pjperu:districts:dry` (con VPN peru) — confirmar 34/34 distritos OK.
-6. Revisar `run-summary.json` y `failed-pdfs.json`.
-7. Confirmar que `confidential` no aparece como `failedDownload`.
-8. Compartir rama `feat/pj-peru-full-extraction` o `main` con artefactos documentados.
-
-## Catalogo De Errores Y Comportamientos Anomalos
-
-Errores **reales observados en produccion** durante las ejecuciones de 2026-06-27. Cada uno esta documentado con causa root, respuesta del scraper y accion correctiva verificada.
-
-### Errores de sesion JSF (los mas frecuentes)
-
-| Sintoma observado | Causa root | Donde ocurrio | Accion correctiva verificada |
-| --- | --- | --- | --- |
-| `Partial AJAX response empty` | Saturacion del pool JSF: 12 workers arrancando en `slotIdx × 600ms` en el mismo segundo satura el ViewState pool del servidor. Retorna HTML vacio, sin error HTTP. | Primer batch de 12 workers — 6 distritos afectados (AYACUCHO=80 docs, CALLAO=80, LIMA\_NORTE=90, CANETE=170, AMAZONAS=210, HUANUCO=200) | Reintentar ese distrito **solo** con `--concurrency 1`. Un proceso sin competencia completa correctamente. Confirmado en retry manual. |
-| POST busqueda retorna 0 resultados pese a busqueda correcta | El servidor acepta el POST pero retorna una pagina sin filas. Ocurre cuando la VPN es detectada como trafico no peruano por el servidor de aplicaciones (diferente del CDN). | Primer intento sin VPN activa y en warm-up de sesion | Verificar VPN con `--dry-run --limit 5` antes de lanzar la ejecución principal. |
-| Worker termina en pagina 1 sin avanzar | ViewState de la pagina de resultados no coincide con la sesion que inicio la busqueda — el redirect de `inicio.xhtml → resultado.xhtml` genero un ViewState nuevo que no fue capturado correctamente | Primeras versiones del parser; resuelto con el fix del redirect `http→https` en `src/jsf/searchForm.ts` | Ya resuelto. Si reaparece: verificar que `parsePage` capture el ViewState del HTML de `resultado.xhtml`, no del `inicio.xhtml`. |
-
-### Errores de paginacion
-
-| Sintoma observado | Causa root | Donde ocurrio | Accion correctiva verificada |
-| --- | --- | --- | --- |
-| `totalPages = ?` en terminal durante toda la ejecución | `parsePaginatorText` busca `"maxValue"` en los `<script>` tags — ese config solo esta en la respuesta HTML completa del `GET resultado.xhtml`. Las respuestas AJAX parciales (cada POST de paginacion) no lo incluyen. | Todas las ejecuciones hasta commit `6196239` | Fix aplicado: si `totalPages === null` y `totalRecords !== null`, se computa `totalPages = ceil(totalRecords / 10)`. Resuelto. |
-| Paginas intermedias regresan menos de 10 docs | El selector de paneles `div.rf-p[id^="formBuscador:repeat:"]` fallo en parsear la respuesta AJAX — puede ocurrir si la respuesta parcial no incluye el marcado completo del repeat. | Ocasional, no sistematico | Soft-block detection lo captura como `soft_block_warning` en `page-events.jsonl`. Si es sistematico, revisar que la respuesta AJAX incluya `formBuscador:repeat` en el `render` de la request de paginacion. |
-| DataScroller no avanza (misma pagina en loop) | El componente `formBuscador:data1` no recibio el numero de pagina correcto en el POST. El ID del componente puede cambiar entre builds del portal. | No observado en produccion actual | Verificar en DevTools que el campo `formBuscador:data1:page` coincida con la respuesta del paginator. El selector en `src/jsf/pagination.ts` usa el ID configurable. |
-
-### Errores de selectores HTML
-
-| Sintoma observado | Causa root | Donde ocurrio | Accion correctiva verificada |
-| --- | --- | --- | --- |
-| Todos los campos `null` (tipoRecurso, sumilla, etc.) pese a respuesta no vacia | El selector original `[id$=":j_idt455"]` era el ID de un panel especifico de esa sesion JSF. En cada nueva sesion, el servidor genera un sufijo diferente (`j_idt789`, etc.). | ejecución inicial — detectado en code review | Fix: cambiar a selector de clase CSS `div.rf-p` que es estable. Resuelto en commit `c6ea5dc`. |
-| `palabrasClave` null en ~38% de documentos | Algunos paneles no incluyen el bloque "Palabras Clave" — es un campo opcional en el portal (no todos los casos lo tienen). | Coverage report: 62% de docs tienen palabrasClave | Comportamiento esperado. No es un bug del parser. |
-| `sumilla` null en ~40% de documentos | Igual que palabrasClave — campo opcional. Algunos tipos de resolucion (autos, decretos) no generan sumilla. | Coverage report: 60% de docs tienen sumilla | Comportamiento esperado. |
-
-### Comportamientos del portal entendidos (no bugs del scraper)
-
-| Comportamiento | Explicacion | Impacto |
-| --- | --- | --- |
-| `ponente` y `dirimente` muestran `***` en la ficha | El portal oculta intencionalmente estos campos para documentos en ciertos estados procesales. No es un error del scraper ni un campo faltante. | Campos no disponibles via scraping. Omitir del schema. |
-| Ficha modal no genera XHR | Los datos de "Ver Ficha" estan pre-renderizados en el HTML inicial dentro del mismo `div.rf-p` panel. El boton solo hace toggle CSS (RichFaces `rich:togglePanel` o similar). | Los campos de la ficha son parseables sin requests adicionales. Implementado en este commit. |
-| Portal responde 0 resultados sin VPN | El endpoint de busqueda verifica la IP de origen. Sin VPN peruana, la busqueda devuelve pagina vacia sin mensaje de error. | Siempre verificar VPN antes de correr. |
-| UUID de PDF expira | Los UUID en `/ServletDescarga?uuid=X` son temporales — generados por sesion. Un UUID capturado en una sesion anterior puede devolver 404 en otra sesion diferente. | Por eso el scraper descarga PDFs en la misma sesion que los scrapeó. En pdf-only.mjs habra que re-autenticar. |
-
-### Soft Block — Deteccion Y Respuesta Automatica
-
-El portal PJ Peru usa saturacion silenciosa en lugar de HTTP 429. Cuando un worker hace demasiadas requests, el servidor empieza a servir paginas con 0 documentos en vez de retornar un error explicito. Sin deteccion, el scraper navega decenas de paginas vacias y nunca termina.
-
-```mermaid
-flowchart TD
-    Page["Procesar pagina N"] --> Count["docsThisPage = 0?"]
-    Count -->|Si| Inc["consecutiveEmptyPages++"]
-    Count -->|No| Reset["consecutiveEmptyPages = 0"]
-    Inc --> Threshold{">= 3 vacias\nconsecutivas?"}
-    Threshold -->|Si| Abort["Abort: guardar checkpoint\nloggear soft_block en page-events"]
-    Threshold -->|No| Next["Siguiente pagina"]
-    Reset --> Next
-    Abort --> Retry["Reintentar con --resume\no --concurrency 1"]
-```
-
-Constante configurable en `src/scraper/sectorScraper.ts`:
-
-```typescript
-const CONSECUTIVE_EMPTY_ABORT = 3; // abortar si 3 paginas seguidas devuelven 0 docs
-```
-
-El evento de abort se registra en `page-events.jsonl` con `type: "soft_block_abort"` para auditoria.
-
-## Guia Para Un Futuro Colega
-
-Si solo puedes leer tres cosas:
-
-1. Este README.
-2. `src/scraper/sectorScraper.ts` para entender el loop por pagina.
-3. `src/pdf/downloader.ts` y `src/session/retry.ts` para entender PDFs, 429 y backoff.
-
-Si revisas datos:
-
-- Empieza por `run-summary.json`.
-- Usa `page-events.jsonl` para reconstruir la ejecución.
-- Trata `failed-pdfs.json` como inventario, no como lista pura de errores.
-- Separa siempre `confidential` de `failedDownload`.
+| Modulo | Responsabilidad |
+| --- | --- |
+| `src/cli.ts` | Flags, validacion de argumentos y arranque |
+| `src/config.ts` | Configuracion por sitio: URL, selectores, columnas, tiempos, `rowParser` |
+| `src/session/*` | Axios, cookies, deteccion de rate limit, retry/backoff |
+| `src/jsf/*` | Formularios, paginacion PrimeFaces y RichFaces, respuestas parciales JSF |
+| `src/parser/*` | HTML a pagina, filas `<tr>` o div-repeat, documentos |
+| `src/scraper/*` | Orquestacion por sitio/sector/pagina; multi-proceso paralelo |
+| `src/pdf/downloader.ts` | Descarga directa (PJ Peru) y por accion JSF (OEFA) |
+| `src/output/runReport.ts` | Artefactos de auditoria |
+| `scripts/parallel-sectors.mjs` | Lanza N procesos Node en paralelo, uno por sector |
+| `src/tools/simulate429.ts` | Validacion local de 429 |
 
 ## Licencia
 
