@@ -359,6 +359,28 @@ Cada archivo tiene una sola responsabilidad. Los orquestadores (`sectorScraper.t
 | `src/cli.ts` | Flags CLI y arranque |
 | `scripts/` | Implementaciones internas llamadas por los comandos npm |
 
+## Estado del Proyecto
+
+**Veredicto: Near-Production** — auditoria tecnica independiente sobre arquitectura, manejo de errores, cobertura de tests, TSDoc y CI.
+
+**Fortalezas confirmadas:**
+
+| Area | Resultado |
+| --- | --- |
+| Arquitectura | Capas limpias sin imports circulares; sin god modules |
+| Manejo de errores | Retry/backoff con jitter completo; PDF downloads nunca lanzan excepcion — retornan structs tipados |
+| TSDoc | 114 bloques cubriendo todos los exports de la API publica; `@remarks`, `@param`, `@returns` en cada funcion |
+| Tests | 170 tests con fake timers, mocked fs, concurrencia verificada; todas las rutas de PDF cubiertas |
+| Observabilidad | Winston estructurado en cada evento del ciclo de vida; `PageEvent` trazable por pagina |
+
+**3 gaps antes de produccion completa:**
+
+1. `validateOutput` usa `readFileSync` sobre el JSONL entero — riesgo de OOM en corridas de 43K+ documentos; deberia hacer streaming o leer solo el head.
+2. El loop de paginacion en `sectorScraper.ts` no tiene tests unitarios — soft-block abort, heuristicas RichFaces y `scrapeSectorWithRetry` quedan sin cobertura de unidad.
+3. CI no enforcea thresholds de coverage — una PR puede bajar de 80% a 20% y pasaria verde.
+
+Estos tres gaps no afectan la corrida normal del scraper; son riesgos de mantenimiento y escala a largo plazo.
+
 ## Licencia
 
 MIT.
