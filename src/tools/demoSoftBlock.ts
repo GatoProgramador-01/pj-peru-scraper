@@ -30,57 +30,89 @@ const VIEWSTATE = 'demo-viewstate-token-abc123';
 
 /**
  * First response: two `div.rf-p` panels so page 0 has real rows.
- * The "next" button keeps hasNextPage=true, pushing the scraper into page 1.
+ * Structure must match what parseRichFacesRepeatRows expects:
+ *   - `.rf-p-hdr span[style*="bold"]` → tipoRecurso + expediente cells
+ *   - `.rf-p-b` with `.txtbold` sibling pairs → labeled field cells
+ * Without these, every cell is empty and the row filter drops them all.
  */
 const pageWithRows = (): string => `<!DOCTYPE html>
 <html><body>
 <form id="formBuscador" action="/" method="post">
   <input type="hidden" name="javax.faces.ViewState" value="${VIEWSTATE}">
   <div class="rf-p" id="formBuscador:repeat:0:j_idt455">
-    <div class="rf-p-hdr">EXP-001-2024-DEMO</div>
-    <div class="rf-p-b">Demo judicial document 1</div>
+    <div class="rf-p-hdr">
+      <span style="font-weight:bold">Apelación</span>
+      <span style="font-weight:bold">00001-2024-0-5001-JR-PE-01</span>
+    </div>
+    <div class="rf-p-b">
+      <div class="txtbold">Pretensión:</div><div>Demanda contenciosa administrativa</div>
+      <div class="txtbold">Tipo Resolución:</div><div>Sentencia</div>
+      <div class="txtbold">Fecha Resolución:</div><div>15/01/2024</div>
+      <div class="txtbold">Sala:</div><div>Primera Sala Civil Permanente</div>
+      <div class="txtbold">Sumilla:</div><div>Demo — soft-block simulation row 1</div>
+    </div>
   </div>
   <div class="rf-p" id="formBuscador:repeat:1:j_idt455">
-    <div class="rf-p-hdr">EXP-002-2024-DEMO</div>
-    <div class="rf-p-b">Demo judicial document 2</div>
+    <div class="rf-p-hdr">
+      <span style="font-weight:bold">Casación</span>
+      <span style="font-weight:bold">00002-2024-0-5001-JR-CI-02</span>
+    </div>
+    <div class="rf-p-b">
+      <div class="txtbold">Pretensión:</div><div>Nulidad de acto jurídico</div>
+      <div class="txtbold">Tipo Resolución:</div><div>Auto</div>
+      <div class="txtbold">Fecha Resolución:</div><div>20/02/2024</div>
+      <div class="txtbold">Sala:</div><div>Segunda Sala Civil Permanente</div>
+      <div class="txtbold">Sumilla:</div><div>Demo — soft-block simulation row 2</div>
+    </div>
   </div>
   <a class="rf-ds-btn-next">&#x203A;</a>
 </form>
 </body></html>`;
 
 /**
- * All subsequent responses: zero `div.rf-p` panels but the "next" button
- * is still present — this is the exact soft-block signature that triggers
- * the detection logic in handleSoftBlock.
+ * JSF partial-response XML for all page-advance POSTs: zero `div.rf-p` panels
+ * but the RichFaces next button is present in the CDATA fragment.
+ *
+ * @remarks
+ * Page-advance requests are JSF partial AJAX POSTs, not full GETs. The scraper's
+ * `extractPartialResponse` extracts the longest CDATA block containing a block-level
+ * element (`<div>` qualifies) and uses that as the HTML fragment. A second `<update>`
+ * carries the refreshed ViewState token. Without this format, `requirePartialHtml`
+ * throws and the retry loop treats the failure as end-of-results instead of a
+ * soft block.
  */
-const pageWithoutRows = (): string => `<!DOCTYPE html>
-<html><body>
-<form id="formBuscador" action="/" method="post">
-  <input type="hidden" name="javax.faces.ViewState" value="${VIEWSTATE}">
-  <!-- zero div.rf-p panels: parseRows returns [] -->
-  <!-- a.rf-ds-btn-next present: pageHasNext returns true -->
-  <a class="rf-ds-btn-next">&#x203A;</a>
-</form>
-</body></html>`;
+const partialResponseWithoutRows = (): string => {
+  const fragment = `<div id="formBuscador:panel"><a class="rf-ds-btn-next">&#x203A;</a></div>`;
+  return (
+    `<?xml version='1.0' encoding='UTF-8'?>` +
+    `<partial-response><changes>` +
+    `<update id="formBuscador:panel"><![CDATA[${fragment}]]></update>` +
+    `<update id="javax.faces.ViewState"><![CDATA[${VIEWSTATE}]]></update>` +
+    `</changes></partial-response>`
+  );
+};
 
 // ── Local demo server ─────────────────────────────────────────────────────────
 
 /**
- * Creates a one-shot HTTP server that serves `pageWithRows` for the first
- * request and `pageWithoutRows` for every subsequent request.
+ * Creates a local HTTP server that mimics the two response types the scraper
+ * encounters in production:
+ * - GET → full HTML page with 2 result rows (the bootstrap response)
+ * - POST → JSF partial-response XML with 0 rows + next-button present (soft block)
+ *
+ * @remarks
+ * Distinguishing by HTTP method mirrors real portal behaviour: the initial page
+ * load is a GET, and every subsequent page-advance is a JSF partial AJAX POST.
  */
-const createDemoServer = (): http.Server => {
-  let requestCount = 0;
-  return http.createServer((_req, res) => {
-    requestCount++;
-    const html = requestCount === 1 ? pageWithRows() : pageWithoutRows();
+const createDemoServer = (): http.Server =>
+  http.createServer((req, res) => {
+    const isPost = req.method === 'POST';
     res.writeHead(200, {
-      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Type': isPost ? 'text/xml; charset=utf-8' : 'text/html; charset=utf-8',
       'Set-Cookie': 'JSESSIONID=demo-session-abc; Path=/',
     });
-    res.end(html);
+    res.end(isPost ? partialResponseWithoutRows() : pageWithRows());
   });
-};
 
 // ── Demo config & context ─────────────────────────────────────────────────────
 
