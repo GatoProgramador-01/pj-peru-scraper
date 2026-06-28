@@ -2,7 +2,8 @@ import { logger } from '../logger.js';
 import { CONSECUTIVE_EMPTY_ABORT, ROWS_PER_PAGE } from '../config/constants.js';
 import * as display from '../display/terminal.js';
 import type { $Root, ParsedPage, ParsedRow, Session } from '../models/internalTypes.js';
-import type { RunMetrics } from '../models/metrics.js';
+import type { PageEvent, RunMetrics } from '../models/metrics.js';
+import type { PagePdfStats } from '../models/pdfTypes.js';
 import type { AdvancePageCtx, PageMetrics, SectorContext, SectorResult } from '../models/scraperTypes.js';
 import type { JudicialDocument, ScrapeOptions, SiteConfig } from '../types.js';
 import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js';
@@ -105,6 +106,106 @@ const calcPageMetrics = (
   return { docsPerMin, pagesPerMin, pdfRate };
 };
 
+// --- Soft-block helpers ---
+
+const buildSoftBlockEvent = (
+  type: 'soft_block_abort' | 'soft_block_warning',
+  site: string, sectorId: string | null, sectorName: string | null,
+  pageIndex: number, page: ParsedPage, metrics: RunMetrics,
+  runLimit: number | null, elapsed: string,
+): PageEvent => ({
+  type,
+  site, sectorId, sectorName, pageIndex,
+  pageLabel: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : '/?'}`,
+  docsThisPage: 0, totalDocs: metrics.totalDocumentsCollected, targetDocs: runLimit,
+  totalRecords: page.totalRecords,
+  pdfDownloadedThisPage: 0, pdfFailedThisPage: 0, pdfMissingThisPage: 0,
+  pdfConfidentialThisPage: 0, pdfSkippedExistingThisPage: 0,
+  elapsed, createdAt: new Date().toISOString(),
+});
+
+const handleSoftBlock = (
+  consecutiveEmptyPages: number,
+  page: ParsedPage, pageIndex: number,
+  ctx: { site: string; sectorId: string | null; sectorName: string | null; metrics: RunMetrics; pageEvents: PageEvent[]; runLimit: number | null; totalScraped: number },
+  elapsed: string,
+): 'abort' | 'continue' => {
+  const reachedAbortThreshold = consecutiveEmptyPages >= CONSECUTIVE_EMPTY_ABORT;
+  const blockType: 'soft_block_abort' | 'soft_block_warning' = reachedAbortThreshold ? 'soft_block_abort' : 'soft_block_warning';
+  logger.warn(`${blockType} [${consecutiveEmptyPages}/${CONSECUTIVE_EMPTY_ABORT}]: 0 rows on page with hasNextPage=true`, { sectorId: ctx.sectorId, pageIndex, totalScraped: ctx.totalScraped });
+  ctx.pageEvents.push(buildSoftBlockEvent(blockType, ctx.site, ctx.sectorId, ctx.sectorName, pageIndex, page, ctx.metrics, ctx.runLimit, elapsed));
+  return reachedAbortThreshold ? 'abort' : 'continue';
+};
+
+// --- Page event helpers ---
+
+const buildPageEvent = (
+  site: string, sectorId: string | null, sectorName: string | null,
+  pageIndex: number, page: ParsedPage,
+  toWrite: JudicialDocument[], metrics: RunMetrics,
+  runLimit: number | null, pagePdfStats: PagePdfStats, elapsed: string,
+): PageEvent => ({
+  type: 'pageScraped',
+  site,
+  sectorId,
+  sectorName,
+  pageIndex,
+  pageLabel: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : '/?'}`,
+  docsThisPage: toWrite.length,
+  totalDocs: metrics.totalDocumentsCollected,
+  targetDocs: runLimit,
+  totalRecords: page.totalRecords,
+  ...pagePdfStats,
+  elapsed,
+  createdAt: new Date().toISOString(),
+});
+
+const logPageScraped = (
+  sectorId: string | null, sectorName: string | null,
+  pageIndex: number, page: ParsedPage,
+  toWrite: JudicialDocument[], totalScraped: number,
+  runLimit: number | null, metrics: RunMetrics,
+  pagePdfStats: PagePdfStats, pdfRate: number,
+  docsPerMin: number | null, elapsed: string,
+): void => {
+  const remaining = page.totalRecords != null ? page.totalRecords - totalScraped : null;
+  logger.info('Page scraped', {
+    sector: `${sectorId}=${sectorName}`,
+    page: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : '/?'}`,
+    docsThisPage: toWrite.length,
+    totalDocs: runLimit !== null ? `${metrics.totalDocumentsCollected}/${runLimit}` : metrics.totalDocumentsCollected,
+    totalScraped,
+    totalRecords: page.totalRecords ?? '?',
+    remaining: remaining != null ? remaining : '?',
+    ...pagePdfStats,
+    pdfRate: `${pdfRate} pdfs/min`,
+    rate: docsPerMin != null ? `${docsPerMin} docs/min` : '-',
+    elapsed,
+  });
+};
+
+// --- Advance page helper ---
+
+const tryAdvancePage = async (
+  session: Session, config: SiteConfig,
+  ctx: AdvancePageCtx, metrics: RunMetrics,
+  totalScraped: number, page: ParsedPage,
+): Promise<{ $: $Root; newViewState: string | null } | 'done'> => {
+  if (page.totalRecords !== null && totalScraped >= page.totalRecords) {
+    logger.info('All records collected - sector complete', { sectorId: ctx.sectorId, totalScraped, totalRecords: page.totalRecords });
+    return 'done';
+  }
+  if (config.timing.pageDelayMs[1] > 0) await jitter(...config.timing.pageDelayMs);
+  try {
+    return await advancePage(session, config, ctx, metrics);
+  } catch (err) {
+    logger.warn('Page advance failed after all retries — treating as end of results', {
+      sectorId: ctx.sectorId, pageIndex: ctx.pageIndex, error: (err as Error).message,
+    });
+    return 'done';
+  }
+};
+
 // --- Main scraper ---
 
 export const scrapeSector = async (
@@ -202,24 +303,13 @@ export const scrapeSector = async (
         logger.info('Empty page - end of results', { sectorId, pageIndex });
         break;
       }
-
       consecutiveEmptyPages++;
-      const reachedAbortThreshold = consecutiveEmptyPages >= CONSECUTIVE_EMPTY_ABORT;
-      const blockType = reachedAbortThreshold ? 'soft_block_abort' : 'soft_block_warning';
-      logger.warn(`${blockType} [${consecutiveEmptyPages}/${CONSECUTIVE_EMPTY_ABORT}]: 0 rows on page with hasNextPage=true`, { sectorId, pageIndex, totalScraped });
-      pageEvents.push({
-        type: blockType,
-        site, sectorId, sectorName, pageIndex,
-        pageLabel: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : '/?'}`,
-        docsThisPage: 0, totalDocs: metrics.totalDocumentsCollected, targetDocs: runLimit,
-        totalRecords: page.totalRecords,
-        pdfDownloadedThisPage: 0, pdfFailedThisPage: 0, pdfMissingThisPage: 0,
-        pdfConfidentialThisPage: 0, pdfSkippedExistingThisPage: 0,
-        elapsed: elapsedSince(sectorStart), createdAt: new Date().toISOString(),
-      });
-
-      if (reachedAbortThreshold) break;
-
+      const signal = handleSoftBlock(
+        consecutiveEmptyPages, page, pageIndex,
+        { site, sectorId, sectorName, metrics, pageEvents, runLimit, totalScraped },
+        elapsedSince(sectorStart),
+      );
+      if (signal === 'abort') break;
       // Still in soft-block retry window — skip PDF/write, advance to next page
       if (!page.hasNextPage) break;
       if (config.timing.pageDelayMs[1] > 0) await jitter(...config.timing.pageDelayMs);
@@ -236,8 +326,7 @@ export const scrapeSector = async (
     const pagePdfStartedAt = Date.now();
     const pagePdfStats = shouldDownloadPdfs(pdfDir, dryRun)
       ? await downloadPagePdfs(
-          session,
-          config,
+          session, config,
           { docs: toWrite, rows: page.rows, viewState: page.viewState },
           { pdfDir: pdfDir!, pdfConcurrency, metrics, failedPdfs, onProgress: (done, total) => display.liveProgress('pdf', done, total) },
         )
@@ -255,56 +344,20 @@ export const scrapeSector = async (
     totalScraped += toWrite.length;
     metrics.totalDocumentsCollected += toWrite.length;
 
-    const remaining = page.totalRecords != null ? page.totalRecords - totalScraped : null;
     const pdfCompleted = pagePdfStats.pdfDownloadedThisPage + pagePdfStats.pdfSkippedExistingThisPage;
     const { docsPerMin, pagesPerMin, pdfRate } = calcPageMetrics(
       totalScraped, pageIndex, Date.now() - sectorStart, Date.now() - pagePdfStartedAt, pdfCompleted,
     );
 
+    const elapsed = elapsedSince(sectorStart);
     display.pageLine(
-      pageIndex + 1,
-      page.totalPages,
-      toWrite.length,
-      totalScraped,
-      runLimit,
-      page.totalRecords ?? null,
-      pdfCompleted,
-      pagePdfStats.pdfConfidentialThisPage,
-      pagePdfStats.pdfFailedThisPage,
-      elapsedSince(sectorStart),
-      docsPerMin,
-      pagesPerMin,
+      pageIndex + 1, page.totalPages, toWrite.length, totalScraped,
+      runLimit, page.totalRecords ?? null, pdfCompleted,
+      pagePdfStats.pdfConfidentialThisPage, pagePdfStats.pdfFailedThisPage,
+      elapsed, docsPerMin, pagesPerMin,
     );
-
-    logger.info('Page scraped', {
-      sector: `${sectorId}=${sectorName}`,
-      page: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : '/?'}`,
-      docsThisPage: toWrite.length,
-      totalDocs: runLimit !== null ? `${metrics.totalDocumentsCollected}/${runLimit}` : metrics.totalDocumentsCollected,
-      totalScraped,
-      totalRecords: page.totalRecords ?? '?',
-      remaining: remaining != null ? remaining : '?',
-      ...pagePdfStats,
-      pdfRate: `${pdfRate} pdfs/min`,
-      rate: docsPerMin != null ? `${docsPerMin} docs/min` : '-',
-      elapsed: elapsedSince(sectorStart),
-    });
-
-    pageEvents.push({
-      type: 'pageScraped',
-      site,
-      sectorId,
-      sectorName,
-      pageIndex,
-      pageLabel: `${pageIndex + 1}${page.totalPages != null ? `/${page.totalPages}` : '/?'}`,
-      docsThisPage: toWrite.length,
-      totalDocs: metrics.totalDocumentsCollected,
-      targetDocs: runLimit,
-      totalRecords: page.totalRecords,
-      ...pagePdfStats,
-      elapsed: elapsedSince(sectorStart),
-      createdAt: new Date().toISOString(),
-    });
+    logPageScraped(sectorId, sectorName, pageIndex, page, toWrite, totalScraped, runLimit, metrics, pagePdfStats, pdfRate, docsPerMin, elapsed);
+    pageEvents.push(buildPageEvent(site, sectorId, sectorName, pageIndex, page, toWrite, metrics, runLimit, pagePdfStats, elapsed));
 
     if (!page.hasNextPage) {
       logger.info('Last page - sector complete', { sector: `${sectorId}=${sectorName}`, pagesProcessed: pageIndex + 1, totalScraped, elapsed: elapsedSince(sectorStart) });
@@ -314,23 +367,10 @@ export const scrapeSector = async (
     // ── Advance to next page ───────────────────────────────────────────────
     // OEFA's paginator renders a "next" button on the final page even when all
     // records are already collected. Trust totalRecords over the DOM signal.
-    if (page.totalRecords !== null && totalScraped >= page.totalRecords) {
-      logger.info('All records collected - sector complete', { sector: `${sectorId}=${sectorName}`, totalScraped, totalRecords: page.totalRecords });
-      break;
-    }
-    if (config.timing.pageDelayMs[1] > 0) await jitter(...config.timing.pageDelayMs);
-    try {
-      const { $: next$, newViewState } = await advancePage(session, config, { page, pageIndex, sectorId, useRichFaces }, metrics);
-      page = buildNextPage(page, next$, newViewState, parseRows(next$, config, config.baseUrl), pageIndex + 1);
-      pageIndex++;
-    } catch (err) {
-      // All retries exhausted on page advance — treat as end of results rather than
-      // crashing and losing the docs already collected in this run.
-      logger.warn('Page advance failed after all retries — treating as end of results', {
-        sectorId, pageIndex, error: (err as Error).message,
-      });
-      break;
-    }
+    const advResult = await tryAdvancePage(session, config, { page, pageIndex, sectorId, useRichFaces }, metrics, totalScraped, page);
+    if (advResult === 'done') break;
+    page = buildNextPage(page, advResult.$, advResult.newViewState, parseRows(advResult.$, config, config.baseUrl), pageIndex + 1);
+    pageIndex++;
   }
 
   if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true, districtId, opts.checkpointId);

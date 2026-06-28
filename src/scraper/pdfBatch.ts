@@ -86,6 +86,30 @@ const buildCandidates = (
     return [];
   });
 
+/** Downloads all candidates in one concurrent batch (one chunk from the outer for-loop). */
+const downloadChunk = async (
+  session: Session, config: SiteConfig,
+  chunk: PdfCandidate[], input: PdfBatchInput,
+  pdfDir: string, metrics: RunMetrics,
+): Promise<PdfDownloadResult[]> =>
+  Promise.all(chunk.map(c => downloadCandidate(session, config, c, input, pdfDir, metrics)));
+
+/** Applies the download results for one chunk: updates metrics, stats, failed list, and progress. */
+const applyChunkResults = (
+  docs: JudicialDocument[], chunk: PdfCandidate[],
+  results: PdfDownloadResult[],
+  metrics: RunMetrics, failedPdfs: PdfFailure[],
+  stats: PagePdfStats,
+  onProgress: ((done: number, total: number) => void) | undefined,
+  counter: { done: number }, total: number,
+): void => {
+  for (const [j, result] of results.entries()) {
+    recordPdfResult(docs[chunk[j].index], result, metrics, failedPdfs);
+    updatePagePdfStats(stats, result);
+    onProgress?.(++counter.done, total);
+  }
+};
+
 /** Dispatches one PDF download via the correct strategy: direct GET (PJ Peru) or JSF POST (OEFA). */
 const downloadCandidate = (
   session: Session,
@@ -123,19 +147,13 @@ export const downloadPagePdfs = async (
   const candidates = buildCandidates(docs, input.rows, metrics, failedPdfs, stats);
   fs.mkdirSync(pdfDir, { recursive: true });
 
-  let doneCount = 0;
   const total = candidates.length;
+  const counter = { done: 0 };
 
   for (let i = 0; i < candidates.length; i += pdfConcurrency) {
     const chunk = candidates.slice(i, i + pdfConcurrency);
-    const results = await Promise.all(
-      chunk.map(candidate => downloadCandidate(session, config, candidate, input, pdfDir, metrics)),
-    );
-    for (const [j, result] of results.entries()) {
-      recordPdfResult(docs[chunk[j].index], result, metrics, failedPdfs);
-      updatePagePdfStats(stats, result);
-      onProgress?.(++doneCount, total);
-    }
+    const results = await downloadChunk(session, config, chunk, input, pdfDir, metrics);
+    applyChunkResults(docs, chunk, results, metrics, failedPdfs, stats, onProgress, counter, total);
     if (i + pdfConcurrency < candidates.length) await jitter(...config.timing.pdfDelayMs);
   }
 
