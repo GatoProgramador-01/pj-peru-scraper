@@ -1,17 +1,10 @@
 import { type AxiosResponse } from 'axios';
 import { load as cheerioLoad } from 'cheerio';
 import type { $Root, ParsedPage, Session } from '../models/internalTypes.js';
+import type { PaginationRequest } from '../models/jsfTypes.js';
 import { absorbCookies, cookieHeader } from '../session/cookies.js';
 import { isRateLimited } from '../session/rateLimit.js';
 import { extractPartialResponse } from './partialResponse.js';
-
-/** Parameters that drive a single AJAX page-turn POST (target index, row size, JSF variant). */
-export interface PaginationRequest {
-  page: ParsedPage;
-  targetPageIndex: number;
-  rowsPerPage: number;
-  useRichFaces?: boolean;
-}
 
 export const buildPaginationBody = (page: ParsedPage, targetPageIndex: number, rowsPerPage: number): string => {
   const paginatorId = page.paginatorId ?? `${page.formId}:j_idt_paginator`;

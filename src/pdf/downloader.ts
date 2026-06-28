@@ -1,27 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import { PDF_MAGIC } from '../config/constants.js';
 import { logger } from '../logger.js';
 import type { JsfAction, Session } from '../models/internalTypes.js';
 import type { PdfDownloadResult, RunMetrics } from '../models/metrics.js';
+import type { JsfPdfTarget, PdfDownloadConfig } from '../models/pdfTypes.js';
 import type { JudicialDocument, SiteConfig } from '../types.js';
 import { absorbCookies, cookieHeader } from '../session/cookies.js';
 import { withRetry } from '../session/retry.js';
 
-const PDF_MAGIC = '%PDF';
-
-/** Output directory and retry timing for a direct URL PDF download. */
-export interface PdfDownloadConfig {
-  pdfDir: string;
-  retryWaitMs: readonly number[];
-}
-
-/** All inputs needed to POST a JSF form action and receive the PDF binary response. */
-export interface JsfPdfTarget {
-  viewState: string;
-  mojarra: JsfAction;
-  doc: JudicialDocument;
-  pdfDir: string;
-}
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 

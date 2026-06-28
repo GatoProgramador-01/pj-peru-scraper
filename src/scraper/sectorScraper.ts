@@ -1,5 +1,5 @@
 import { logger } from '../logger.js';
-import { ROWS_PER_PAGE } from '../config/constants.js';
+import { CONSECUTIVE_EMPTY_ABORT, ROWS_PER_PAGE } from '../config/constants.js';
 import * as display from '../display/terminal.js';
 import type { $Root, ParsedPage, ParsedRow, Session } from '../models/internalTypes.js';
 import type { RunMetrics } from '../models/metrics.js';
@@ -17,50 +17,7 @@ import { withRetry } from '../session/retry.js';
 import { jitter } from '../utils/delay.js';
 import { emptyPdfStats, downloadPagePdfs } from './pdfBatch.js';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-// ─── Module-level constants ───────────────────────────────────────────────────
-
-const CONSECUTIVE_EMPTY_ABORT = 3;
-
-// ─── Pure helper functions ────────────────────────────────────────────────────
-
-const elapsedSince = (startMs: number): string => {
-  const sec = Math.round((Date.now() - startMs) / 1000);
-  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
-};
-
-const hasReachedDocLimit = (total: number, limit: number | null): boolean =>
-  limit !== null && total >= limit;
-
-const isSoftBlock = (hasNext: boolean, pageIndex: number): boolean =>
-  hasNext && pageIndex > 0;
-
-const shouldDownloadPdfs = (pdfDir: string | null | undefined, dryRun: boolean): boolean =>
-  Boolean(pdfDir) && !dryRun;
-
-const richFacesMissingNextButton = (page: ParsedPage): boolean =>
-  !page.hasNextPage && page.totalPages === null && page.rows.length >= ROWS_PER_PAGE;
-
-const paginatorHidTotalPages = (page: ParsedPage): boolean =>
-  page.totalRecords !== null && page.totalPages === null;
-
-const calcPageMetrics = (
-  totalScraped: number,
-  pageIndex: number,
-  elapsedMs: number,
-  pagePdfMs: number,
-  pdfCompleted: number,
-): PageMetrics => {
-  const elapsedSec = elapsedMs / 1000;
-  const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
-  const pagesPerMin = elapsedSec > 5 ? Math.round(((pageIndex + 1) / elapsedSec) * 60 * 10) / 10 : null;
-  const pagePdfSec = Math.max(1, pagePdfMs / 1000);
-  const pdfRate = Math.round((pdfCompleted / pagePdfSec) * 60);
-  return { docsPerMin, pagesPerMin, pdfRate };
-};
-
-// ─── Pagination helpers ───────────────────────────────────────────────────────
+// --- Pagination helpers ---
 
 const resolveHasNextPage = (
   $: $Root,
@@ -111,7 +68,44 @@ const advancePage = (
     metrics,
   );
 
-// ─── Main scraper ─────────────────────────────────────────────────────────────
+// --- Pure helpers ---
+
+const elapsedSince = (startMs: number): string => {
+  const sec = Math.round((Date.now() - startMs) / 1000);
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
+};
+
+const hasReachedDocLimit = (total: number, limit: number | null): boolean =>
+  limit !== null && total >= limit;
+
+const isSoftBlock = (hasNext: boolean, pageIndex: number): boolean =>
+  hasNext && pageIndex > 0;
+
+const shouldDownloadPdfs = (pdfDir: string | null | undefined, dryRun: boolean): boolean =>
+  Boolean(pdfDir) && !dryRun;
+
+const richFacesMissingNextButton = (page: ParsedPage): boolean =>
+  !page.hasNextPage && page.totalPages === null && page.rows.length >= ROWS_PER_PAGE;
+
+const paginatorHidTotalPages = (page: ParsedPage): boolean =>
+  page.totalRecords !== null && page.totalPages === null;
+
+const calcPageMetrics = (
+  totalScraped: number,
+  pageIndex: number,
+  elapsedMs: number,
+  pagePdfMs: number,
+  pdfCompleted: number,
+): PageMetrics => {
+  const elapsedSec = elapsedMs / 1000;
+  const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
+  const pagesPerMin = elapsedSec > 5 ? Math.round(((pageIndex + 1) / elapsedSec) * 60 * 10) / 10 : null;
+  const pagePdfSec = Math.max(1, pagePdfMs / 1000);
+  const pdfRate = Math.round((pdfCompleted / pagePdfSec) * 60);
+  return { docsPerMin, pagesPerMin, pdfRate };
+};
+
+// --- Main scraper ---
 
 export const scrapeSector = async (
   session: Session,

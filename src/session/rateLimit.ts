@@ -1,11 +1,11 @@
+import { DEFAULT_RETRY_AFTER_MS } from '../config/constants.js';
+
 // The PJ Peru and OEFA portals sometimes return HTTP 200 with a rate-limit
 // HTML page instead of a proper 429. We detect this by scanning the body text.
 const RATE_LIMIT_SIGNALS = [
   'demasiadas solicitudes', 'too many requests', 'acceso denegado',
   'access denied', 'rate limit', 'por favor espere', 'please wait',
 ];
-
-const DEFAULT_RETRY_AFTER_MS = 60_000;
 
 /** Returns true if the HTML body contains a rate-limit message (status-200 soft block). */
 export const isRateLimited = (html: string): boolean =>

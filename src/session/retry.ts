@@ -1,9 +1,8 @@
+import { MAX_RETRY_ATTEMPTS } from '../config/constants.js';
 import { logger } from '../logger.js';
 import type { RunMetrics } from '../models/metrics.js';
 import { sleep } from '../utils/delay.js';
 import { extract429WaitMs } from './rateLimit.js';
-
-const MAX_RETRY_ATTEMPTS = 3;
 
 /**
  * Retries fn up to MAX_RETRY_ATTEMPTS times.

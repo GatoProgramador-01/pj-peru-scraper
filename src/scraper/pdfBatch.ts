@@ -2,39 +2,11 @@ import fs from 'fs';
 import type { ParsedRow, Session } from '../models/internalTypes.js';
 import type { PdfDownloadResult, PdfFailure, RunMetrics } from '../models/metrics.js';
 import { pdfFailureFromDocument } from '../models/metrics.js';
+import type { PagePdfStats, PdfBatchInput, PdfBatchOptions, PdfCandidate } from '../models/pdfTypes.js';
 import type { JudicialDocument, SiteConfig } from '../types.js';
 import { downloadJsfActionPdf, downloadPdf } from '../pdf/downloader.js';
 import { jitter } from '../utils/delay.js';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-/** Per-page PDF download counters displayed in the terminal progress line. */
-export interface PagePdfStats {
-  pdfDownloadedThisPage: number;
-  pdfFailedThisPage: number;
-  pdfMissingThisPage: number;
-  pdfConfidentialThisPage: number;
-  pdfSkippedExistingThisPage: number;
-}
-
-/** Documents and JSF state needed to resolve PDF downloads for one page. */
-export interface PdfBatchInput {
-  docs: JudicialDocument[];
-  rows: ParsedRow[];
-  viewState: string;
-}
-
-/** Infrastructure options for a PDF batch: where to write, how many concurrent, where to record failures. */
-export interface PdfBatchOptions {
-  pdfDir: string;
-  pdfConcurrency: number;
-  metrics: RunMetrics;
-  failedPdfs: PdfFailure[];
-  onProgress?: (done: number, total: number) => void;
-}
-
-/** A doc that has a resolvable PDF source: either a direct URL or a JSF action. */
-type PdfCandidate = { index: number; isJsf: boolean };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

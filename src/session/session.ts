@@ -2,6 +2,7 @@ import https from 'https';
 import http from 'http';
 import axios, { type AxiosResponse } from 'axios';
 import { load as cheerioLoad } from 'cheerio';
+import { DEFAULT_USER_AGENT, MAX_REDIRECTS, MAX_SOCKETS, SESSION_TIMEOUT_MS } from '../config/constants.js';
 import { logger } from '../logger.js';
 import type { $Root, Session } from '../models/internalTypes.js';
 import { absorbCookies, cookieHeader } from './cookies.js';
@@ -9,12 +10,7 @@ import { isRateLimited } from './rateLimit.js';
 
 // Enough sockets to support 34 parallel district workers without queuing.
 // Node.js default of 5 per host serializes workers behind a tiny connection pool.
-const MAX_SOCKETS = 64;
-const SESSION_TIMEOUT_MS = 30_000;
-const MAX_REDIRECTS = 5;
 // Chrome 125 on Windows — matches expected traffic from Peru-based users.
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
-
 const parseProxy = (url: string) => {
   const u = new URL(url);
   return {
