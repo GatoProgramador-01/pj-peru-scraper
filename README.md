@@ -42,18 +42,33 @@ Correr en este orden. Los comandos npm funcionan igual en Ubuntu, Windows y CI �
 
 ```bash
 npm ci            # instala dependencias exactas del lockfile
-npm run ci        # typecheck + build + lint + 53 tests unitarios
+npm run ci        # typecheck + build + lint + 170 tests unitarios
 ```
 
-Resultado esperado: `Tests  53 passed (53)`, sin errores tsc ni lint.
+Resultado esperado: `Tests  170 passed (170)`, sin errores tsc ni lint.
 
-### Paso 2 — Sin internet (logica de retry)
+### Paso 2 — Sin internet (retry y soft-block)
 
 ```bash
 npm run verify:local
 ```
 
 Simula tres escenarios sin tocar ningun portal: 429 recuperable (3 intentos, exito), 429 persistente (3 intentos, falla controlada), y soft-block (3 paginas AJAX vacias consecutivas → abort). Imprime `"ok": true` con las tres secciones en JSON.
+
+```bash
+npm run demo:soft-block
+```
+
+Levanta un servidor HTTP local en `127.0.0.1` que replica el patron de soft-block del portal real: GET bootstrap entrega 2 documentos, los POST de paginacion AJAX devuelven HTTP 200 con cuerpo vacio y next-button presente. Resultado esperado:
+
+```
+✓ scraped   page 1/?  docs=2
+⚠ warning   page 2/?  docs=0
+⚠ warning   page 3/?  docs=0
+✖ ABORT     page 4/?  docs=0
+```
+
+`Page events emitted: 4`. No requiere VPN ni conexion de red.
 
 ### Paso 3 — Internet publica, sin VPN (OEFA)
 
@@ -68,19 +83,37 @@ Extrae 100 documentos reales del portal publico OEFA + descarga sus PDFs. No req
 
 ### Paso 4 — VPN peruana activa (PJ Peru smoke)
 
-Confirmar conectividad primero:
+El portal bloquea IPs no peruanas con HTTP 403. Verificar que el nodo de salida es Peru antes de correr:
+
+```bash
+curl -s https://ipinfo.io/json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('country'), d.get('city'), d.get('org'))"
+# Debe imprimir: PE  Lima  <ISP peruano>
+```
+
+Confirmar que el portal responde:
 
 ```bash
 curl -s --max-time 5 -o /dev/null -w "%{http_code}\n" https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml
+# Debe retornar: 200
 ```
 
-Debe retornar `200`. Luego:
+Luego:
 
 ```bash
 npm run scrape:pjperu:smoke
 ```
 
-Conecta al portal, hace la busqueda JSF y parsea 20 documentos en dry-run (no escribe nada). Confirma que la sesion, el formulario de busqueda y el parser funcionan con el portal real.
+Conecta al portal, envia el formulario de busqueda JSF y parsea 20 documentos en dry-run (no escribe nada al disco). Resultado esperado:
+
+```
+OK Session ready
+OK Search complete  N records · M pages
+  Pagina 1 de M   |   Tiempo: Xs
+  + Documentos esta pagina  : 10
+    Total acumulado         : 10
+```
+
+Confirma que la sesion HTTP, el ViewState JSF, el formulario de busqueda y el parser RichFaces funcionan con el portal real.
 
 ### Paso 5 — VPN peruana activa (tests acotados con datos reales)
 
@@ -90,23 +123,6 @@ npm run scrape:pjperu:districts:test       # 34 distritos + PDFs, ~25 min
 ```
 
 Estos son los tests de integracion completos. Producen documentos reales, PDFs descargados y reportes en `output/`.
-
-**Feature clave a verificar — soft-block detection:**
-
-En las corridas reales de PJ Peru no se observo HTTP 429. Lo que si ocurrio fue su
-equivalente: el portal devolvio HTTP 200 con AJAX vacio durante paginas consecutivas
-(soft-block por contencion del pool JSF). El scraper lo detecta y lo registra.
-
-El soft-block solo se dispara con alta concurrencia y carga real del portal, por lo que
-no es reproducible de forma determinista contra el servidor. La logica esta cubierta por:
-
-```bash
-npm run verify:local
-```
-
-El output incluye la seccion `"softBlock"` confirmando que 3 paginas vacias consecutivas
-disparan `"abort"` en el page index 2 (umbral `CONSECUTIVE_EMPTY_ABORT = 3`).
-
 
 ### Paso 6 — Verificar logica de 429 contra portal real (opcional)
 
@@ -122,16 +138,18 @@ Sonda el portal OEFA con 500 requests concurrentes para encontrar el threshold d
 | --- | --- | --- |
 | `npm run ci` | No | ~15 s |
 | `npm run verify:local` | No | ~3 s |
+| `npm run demo:soft-block` | No | ~5 s |
 | `npm run scrape:oefa:test100` | No | ~2-5 min |
-| `npm run scrape:pjperu:smoke` | Si | ~30 s |
-| `npm run scrape:pjperu:suprema:years:test` | Si | ~6 min |
-| `npm run scrape:pjperu:districts:test` | Si | ~25 min |
+| `npm run scrape:pjperu:smoke` | Si (Peru) | ~30 s |
+| `npm run scrape:pjperu:suprema:years:test` | Si (Peru) | ~6 min |
+| `npm run scrape:pjperu:districts:test` | Si (Peru) | ~25 min |
 
 ## Scripts Principales
 
 | Script | Uso |
 | --- | --- |
 | `npm run simulate:429` | Simula retry/backoff 429 localmente |
+| `npm run demo:soft-block` | Demo offline de deteccion de soft-block (servidor local) |
 | `npm run scrape:oefa:test100` | 100 documentos OEFA + PDFs |
 | `npm run scrape:oefa:parallel` | Sectores OEFA en paralelo |
 | `npm run scrape:pjperu:smoke` | Smoke PJ Peru directo por CLI |
