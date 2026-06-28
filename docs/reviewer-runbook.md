@@ -21,7 +21,7 @@ npm run scrape:oefa:test100
 Si hay VPN peruana, verificar primero la conectividad al portal:
 
 ```bash
-curl -s --max-time 5 -o /dev/null -w "%{http_code}" https://cej.pj.gob.pe/cej/forms/busquedaform.html
+curl -s --max-time 5 -o /dev/null -w "%{http_code}" https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml
 # esperar 200; cualquier otro codigo o timeout indica que la VPN no esta activa o no rutea Peru
 ```
 

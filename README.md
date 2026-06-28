@@ -63,17 +63,81 @@ curl -s https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xht
 
 Debe devolver `200` antes de correr comandos PJ Peru.
 
-## Pruebas Importantes
+## Guia De Pruebas Para El Reviewer
 
-| Comando | Que valida |
-| --- | --- |
-| `npm run typecheck` | TypeScript sin errores |
-| `npm test` | 53 tests unitarios |
-| `npm run build` | Compilacion a `dist/` |
-| `npm run ci` | Typecheck + build + lint + tests |
-| `npm run verify:local` | Build + simulacion local de 429/backoff |
-| `npm run scrape:oefa:test100` | Extraccion real acotada en red publica |
-| `npm run scrape:pjperu:smoke` | Sesion, busqueda y paginacion PJ Peru con VPN |
+Correr en este orden. Los primeros 3 pasos no requieren internet ni VPN.
+
+### Paso 1 — Sin internet (verificacion estatica)
+
+```bash
+npm ci            # instala dependencias exactas del lockfile
+npm run ci        # typecheck + build + lint + 53 tests unitarios
+```
+
+Resultado esperado: `Tests  53 passed (53)`, sin errores tsc ni lint.
+
+### Paso 2 — Sin internet (logica de retry)
+
+```bash
+npm run verify:local
+```
+
+Simula dos escenarios de 429: uno recuperable (3 intentos, exito) y uno persistente (3 intentos, falla controlada). Imprime `"ok": true` en JSON. Confirma que `withRetry` y el contador de 429 funcionan sin tocar ningun portal.
+
+### Paso 3 — Internet publica, sin VPN (OEFA)
+
+```bash
+npm run scrape:oefa:test100
+```
+
+Extrae 100 documentos reales del portal publico OEFA + descarga sus PDFs. No requiere VPN. Al terminar verifica:
+- `output/test100/oefa-documents.jsonl` — exactamente 100 lineas
+- `output/test100/pdfs/` — archivos `.pdf` presentes
+- `output/test100/run-summary.json` — totales y metricas
+
+### Paso 4 — VPN peruana activa (PJ Peru smoke)
+
+Confirmar conectividad primero:
+
+```bash
+curl -s --max-time 5 -o /dev/null -w "%{http_code}\n" https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml
+```
+
+Debe retornar `200`. Luego:
+
+```bash
+npm run scrape:pjperu:smoke
+```
+
+Conecta al portal, hace la busqueda JSF y parsea 20 documentos en dry-run (no escribe nada). Confirma que la sesion, el formulario de busqueda y el parser funcionan con el portal real.
+
+### Paso 5 — VPN peruana activa (tests acotados con datos reales)
+
+```bash
+npm run scrape:pjperu:suprema:years:test   # 4 anios x 500 docs + PDFs, ~6 min
+npm run scrape:pjperu:districts:test       # 34 distritos + PDFs, ~25 min
+```
+
+Estos son los tests de integracion completos. Producen documentos reales, PDFs descargados y reportes en `output/`.
+
+### Paso 6 — Verificar logica de 429 contra portal real (opcional)
+
+```bash
+npm run probe:oefa:429
+```
+
+Sonda el portal OEFA con 500 requests concurrentes para encontrar el threshold de rate limiting. Imprime `[PASS]` si detecta 429, `[WARN]` si no. Solo util para calibrar `PDF_CONCURRENCY`.
+
+---
+
+| Comando | Requiere VPN | Tiempo aprox |
+| --- | --- | --- |
+| `npm run ci` | No | ~15 s |
+| `npm run verify:local` | No | ~3 s |
+| `npm run scrape:oefa:test100` | No | ~2-5 min |
+| `npm run scrape:pjperu:smoke` | Si | ~30 s |
+| `npm run scrape:pjperu:suprema:years:test` | Si | ~6 min |
+| `npm run scrape:pjperu:districts:test` | Si | ~25 min |
 
 ## Scripts Principales
 
@@ -91,31 +155,37 @@ Debe devolver `200` antes de correr comandos PJ Peru.
 | `npm run scrape:pjperu:suprema:years` | Extraccion Suprema particionada por anio |
 | `npm run scrape:pjperu:suprema:years:retry` | Retry secuencial de anios con soft-block |
 
-## Variables de Entorno
+## Configuracion Inicial: crear tu .env
 
-Todas son opcionales — el scraper funciona sin configurar ninguna. Copiar `.env.example` a `.env` y editar lo necesario:
+Antes de correr cualquier comando, crear el archivo `.env` desde la plantilla:
 
 ```bash
 cp .env.example .env
-# editar con cualquier editor, luego:
-export $(grep -v '^#' .env | xargs)
 ```
 
-O setear inline por comando:
+Para los tests de esta guia, el `.env` recomendado es:
 
 ```bash
+# .env — ajustes recomendados para validar el proyecto completo
+PDF_CONCURRENCY=4          # descargas PDF concurrentes por pagina (por defecto: 1)
+PROBE_429_TOTAL=100        # requests para la sonda 429 (reducir para test rapido)
+PROBE_429_CONCURRENCY=10   # concurrencia de la sonda (ajustar al umbral a testear)
+```
+
+Cargar las variables en la sesion de terminal actual:
+
+```bash
+# Linux / Mac / WSL:
+export $(grep -v '^#' .env | xargs)
+
+# Windows PowerShell:
+Get-Content .env | Where-Object { $_ -notmatch '^#' -and $_ -ne '' } | ForEach-Object { $k,$v = $_ -split '=',2; [System.Environment]::SetEnvironmentVariable($k, $v, 'Process') }
+
+# O simplemente setear inline por comando (no requiere cargar el archivo):
 PDF_CONCURRENCY=4 npm run scrape:oefa:test100
 ```
 
-| Variable | Por defecto | Cuando cambiarla |
-| --- | --- | --- |
-| `PDF_CONCURRENCY` | `1` | Subir a 4-10 en OEFA para acelerar descargas |
-| `PROBE_429_TOTAL` | `500` | Bajar a 50 para una sonda rapida |
-| `PROBE_429_CONCURRENCY` | `20` | Ajustar al nivel que se quiere testear |
-| `PROBE_429_STOP_ON_FIRST` | `true` | `false` para recolectar todos los 429 |
-| `PROBE_429_MODE` | `search` | `get` para un GET simple sin ViewState |
-
-Ver `.env.example` para la lista completa con descripciones.
+Todas las variables tienen valores por defecto — el scraper funciona sin `.env`. Ver `.env.example` para la lista completa con descripciones.
 
 ## Politica De Retry
 
@@ -229,10 +299,11 @@ Lee en este orden. Cada capa depende de la anterior.
 
 | Archivo | Que hace |
 | --- | --- |
-| `src/jsf/viewState.ts` | Extrae `javax.faces.ViewState` |
-| `src/jsf/partialResponse.ts` | Parsea respuestas AJAX JSF |
-| `src/jsf/searchForm.ts` | Envia formulario de busqueda |
-| `src/jsf/pagination.ts` | Avanza paginas por AJAX |
+| `src/jsf/viewState.ts` | Extrae `javax.faces.ViewState` del HTML inicial |
+| `src/jsf/partialResponse.ts` | Parsea la envoltura XML de respuestas AJAX JSF |
+| `src/jsf/actionLink.ts` | Parsea onclick `mojarra.jsfcljs` para links de PDF (OEFA) |
+| `src/jsf/searchForm.ts` | Envia formulario de busqueda (AJAX o clasico con redirect) |
+| `src/jsf/pagination.ts` | Avanza paginas por AJAX (PrimeFaces o RichFaces) |
 
 ### Capa 4 - Parsers HTML
 
