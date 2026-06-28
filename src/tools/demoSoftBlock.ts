@@ -145,7 +145,7 @@ const buildDemoConfig = (baseUrl: string): SiteConfig => ({
   },
 });
 
-const buildDemoOpts = (baseUrl: string): ScrapeOptions => ({
+const buildDemoOpts = (_baseUrl: string): ScrapeOptions => ({
   site: 'demo',
   outputPath: './output/demo-soft-block.jsonl',
   pdfDir: null,
