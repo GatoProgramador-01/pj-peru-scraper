@@ -13,7 +13,7 @@ El proyecto busca probar que el scraper corre de punta a punta:
 - registra fallos recuperables sin truncar silenciosamente;
 - corre en paralelo mediante comandos npm.
 
-Evidencia actual: en una corrida real de Suprema por anio con VPN peruana, el scraper sostuvo cerca de una hora de extraccion, llego a ~43,750 documentos combinando run principal + retry, y demostro que los soft-blocks son contencion del pool JSF, no HTTP 429.
+Evidencia actual: en una corrida real de Suprema por año con VPN peruana, el scraper sostuvo cerca de una hora de extraccion, llego a ~43,750 documentos combinando run principal + retry, y demostro que los soft-blocks son contencion del pool JSF, no HTTP 429.
 
 ## Configuracion Inicial
 
@@ -118,7 +118,7 @@ Confirma que la sesion HTTP, el ViewState JSF, el formulario de busqueda y el pa
 ### Paso 5 — VPN peruana activa (tests acotados con datos reales)
 
 ```bash
-npm run scrape:pjperu:suprema:years:test   # 4 anios x 500 docs + PDFs, ~6 min
+npm run scrape:pjperu:suprema:years:test   # 4 años x 500 docs + PDFs, ~6 min
 npm run scrape:pjperu:districts:test       # 34 distritos + PDFs, ~25 min
 ```
 
@@ -156,10 +156,10 @@ Sonda el portal OEFA con 500 requests concurrentes para encontrar el threshold d
 | `npm run scrape:pjperu:districts:dry` | Smoke Superior por distritos, sin escribir datos |
 | `npm run scrape:pjperu:districts:test` | Prueba acotada Superior con PDFs |
 | `npm run scrape:pjperu:districts` | Extraccion Superior por distritos |
-| `npm run scrape:pjperu:suprema:years:dry` | Smoke Suprema por anios |
-| `npm run scrape:pjperu:suprema:years:test` | Prueba acotada Suprema por anios |
-| `npm run scrape:pjperu:suprema:years` | Extraccion Suprema particionada por anio |
-| `npm run scrape:pjperu:suprema:years:retry` | Retry secuencial de anios con soft-block |
+| `npm run scrape:pjperu:suprema:years:dry` | Smoke Suprema por años |
+| `npm run scrape:pjperu:suprema:years:test` | Prueba acotada Suprema por años |
+| `npm run scrape:pjperu:suprema:years` | Extraccion Suprema particionada por año |
+| `npm run scrape:pjperu:suprema:years:retry` | Retry secuencial de años con soft-block |
 
 ## Politica De Retry Y Caso Real Encontrado
 
@@ -253,7 +253,7 @@ Los runners internos particionan el trabajo:
 
 - OEFA: por sector;
 - PJ Peru Superior: por distrito judicial;
-- PJ Peru Suprema: por anio, porque no tiene filtro de distrito.
+- PJ Peru Suprema: por año, porque no tiene filtro de distrito.
 
 ## Mapa de Lectura del Codigo
 
@@ -307,11 +307,32 @@ Lee en este orden. Cada capa depende de la anterior.
 
 ### Capa 6 - Scraping
 
+Cada archivo tiene una sola responsabilidad. Los orquestadores (`sectorScraper.ts`, `scraper.ts`) usan comentarios de seccion (`// ── Fase ──`) para que la ejecucion se lea como una narrativa lineal sin tener que rastrear funciones auxiliares.
+
+**Helpers (funciones puras, sin efectos de red ni disco):**
+
 | Archivo | Que hace |
 | --- | --- |
-| `src/scraper/sectorScraper.ts` | Bootstrap, busqueda, paginacion, PDFs y checkpoint |
-| `src/scraper/scraper.ts` | Orquesta sectores dentro de un proceso |
-| `src/scraper/sectorDiscovery.ts` | Descubre sectores disponibles |
+| `src/scraper/sectorHelpers.ts` | Limites, duraciones, deteccion de condiciones de paginador |
+| `src/scraper/paginationHelpers.ts` | Avance de pagina, fusion de estado, resolucion de siguiente pagina |
+| `src/scraper/softBlock.ts` | Detecta y registra el patron soft-block (HTTP 200 con AJAX vacio consecutivo) |
+| `src/scraper/pageEvents.ts` | Construye eventos de pagina (exito/soft-block) para el reporte de ejecucion |
+
+**Bucle de paginacion (sectorScraper):**
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/scraper/sectorScraper.ts` | Ciclo Bootstrap → Busqueda → Paginas → PDFs → Checkpoint |
+
+**Bucle de sectores (scraper):**
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/scraper/sectorDiscovery.ts` | Descubre sectores disponibles en el portal |
+| `src/scraper/sectorLoop.ts` | Resolucion de sectores, reintento por sector y pausas entre sectores |
+| `src/scraper/runStats.ts` | Calcula estadisticas finales y registra resumenes de ejecucion |
+| `src/scraper/runOutput.ts` | Escribe JSONL y reporte de PDFs fallidos en disco |
+| `src/scraper/scraper.ts` | Orquestador principal: Setup → Sectores → Salida → Metricas → Reporte |
 
 ### Capa 7 - Entrada y Paralelismo
 
