@@ -3,9 +3,18 @@ import type { JudicialDocument, SiteConfig } from '../types.js';
 import { normDate } from '../utils/date.js';
 import { buildId } from '../utils/fileName.js';
 
+export interface DocumentMappingCtx {
+  site: string;
+  pageIndex: number;
+  columns: SiteConfig['columns'];
+  sectorId: string | null;
+  sectorName: string | null;
+}
+
 export const rowToDocument =
-  (site: string, pageIndex: number, columns: SiteConfig['columns'], sectorId: string | null, sectorName: string | null) =>
+  (ctx: DocumentMappingCtx) =>
   (row: ParsedRow, rowIndex: number): JudicialDocument => {
+    const { site, pageIndex, columns, sectorId, sectorName } = ctx;
     const c = (idx: number | undefined) => (idx !== undefined ? row.cells[idx] ?? '' : '');
     const caseNumber = c(columns.caseNumber);
     const date = c(columns.date);

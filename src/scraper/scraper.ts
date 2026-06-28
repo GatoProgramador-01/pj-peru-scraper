@@ -9,7 +9,7 @@ import { writeRunReports } from '../output/runReport.js';
 import { makeSession } from '../session/session.js';
 import { sleep } from '../utils/delay.js';
 import { discoverSectors } from './sectorDiscovery.js';
-import { scrapeSector } from './sectorScraper.js';
+import { scrapeSector, type SectorContext } from './sectorScraper.js';
 import type { JudicialDocument } from '../types.js';
 import * as display from '../display/terminal.js';
 
@@ -75,15 +75,16 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
 
     logger.info(`-- Sector ${i + 1}/${sectorsToRun.length}: ${sectorName ?? sectorId} --`, { sectorId, sectorName });
     display.sectorBanner(i + 1, sectorsToRun.length, sectorId, sectorName, null);
+    const sectorCtx: SectorContext = { sectorId, sectorName, metrics, failedPdfs, pageEvents, runLimit: opts.limit };
     const session = makeSession(config.baseUrl, opts.proxy);
-    let result = await scrapeSector(session, config, sectorOpts, sectorId, sectorName, metrics, failedPdfs, pageEvents, opts.limit);
+    let result = await scrapeSector(session, config, sectorOpts, sectorCtx);
 
     // Transient server glitch (JSF search POST returns 0 rows) — retry once with fresh session.
     if (result.count === 0 && !opts.dryRun) {
       logger.warn('Zero docs on first attempt — waiting 5s and retrying with fresh session', { sectorId, sectorName });
       await sleep(5_000);
       const retrySession = makeSession(config.baseUrl, opts.proxy);
-      result = await scrapeSector(retrySession, config, sectorOpts, sectorId, sectorName, metrics, failedPdfs, pageEvents, opts.limit);
+      result = await scrapeSector(retrySession, config, sectorOpts, sectorCtx);
     }
 
     allDocs.push(...result.docs);

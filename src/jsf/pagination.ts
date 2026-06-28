@@ -5,6 +5,13 @@ import { absorbCookies, cookieHeader } from '../session/cookies.js';
 import { isRateLimited } from '../session/rateLimit.js';
 import { extractPartialResponse } from './partialResponse.js';
 
+export interface PaginationRequest {
+  page: ParsedPage;
+  targetPageIndex: number;
+  rowsPerPage: number;
+  useRichFaces?: boolean;
+}
+
 export const buildPaginationBody = (page: ParsedPage, targetPageIndex: number, rowsPerPage: number): string => {
   const paginatorId = page.paginatorId ?? `${page.formId}:j_idt_paginator`;
   const dataTableId = paginatorId.replace(/_paginator(?:_[^:]+)?$/, '');
@@ -45,11 +52,9 @@ export const buildRichFacesPaginationBody = (page: ParsedPage, targetPageIndex: 
 export const fetchNextPage = async (
   session: Session,
   url: string,
-  page: ParsedPage,
-  targetPageIndex: number,
-  rowsPerPage: number,
-  useRichFaces = false,
+  req: PaginationRequest,
 ): Promise<{ $: $Root; newViewState: string | null }> => {
+  const { page, targetPageIndex, rowsPerPage, useRichFaces = false } = req;
   const postUrl = page.activeUrl ?? url;
   const body = useRichFaces
     ? buildRichFacesPaginationBody(page, targetPageIndex)
