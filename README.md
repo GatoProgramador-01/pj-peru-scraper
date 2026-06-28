@@ -638,20 +638,77 @@ node dist/cli.js --site pj-peru --limit 10 --dry-run
 node dist/cli.js --site pj-peru --limit 100 --pdfs --pdf-dir output/pjperu/pdfs --out output/pjperu/pj-peru-documents.jsonl
 ```
 
-## Modulos Clave
+## Mapa de Lectura del Codigo
 
-| Modulo | Responsabilidad |
+Lee en este orden — cada capa depende de la anterior.
+
+### Capa 1 — Contratos (lee primero)
+
+Todo el resto del codigo habla en estos tipos. Leerlos primero hace que el resto sea obvio.
+
+| Archivo | Que define |
 | --- | --- |
-| `src/cli.ts` | Flags, validacion de argumentos y arranque |
-| `src/config.ts` | Configuracion por sitio: URL, selectores, columnas, tiempos, `rowParser` |
-| `src/session/*` | Axios, cookies, deteccion de rate limit, retry/backoff |
-| `src/jsf/*` | Formularios, paginacion PrimeFaces y RichFaces, respuestas parciales JSF |
-| `src/parser/*` | HTML a pagina, filas `<tr>` o div-repeat, documentos |
-| `src/scraper/*` | Orquestacion por sitio/sector/pagina; multi-proceso paralelo |
-| `src/pdf/downloader.ts` | Descarga directa (PJ Peru) y por accion JSF (OEFA) |
-| `src/output/runReport.ts` | Artefactos de auditoria |
-| `scripts/parallel-sectors.mjs` | Lanza N procesos Node en paralelo, uno por sector |
-| `src/tools/simulate429.ts` | Validacion local de 429 |
+| `src/types.ts` | `JudicialDocument`, `SiteConfig`, `ScrapeOptions` — las formas publicas del sistema |
+| `src/models/internalTypes.ts` | `Session`, `ParsedPage`, `ParsedRow` — estado de runtime entre capas |
+| `src/models/metrics.ts` | `RunMetrics`, `PdfFailure`, `PageEvent` — todo lo que se mide y registra |
+
+### Capa 2 — Sesion HTTP
+
+Como se establece y mantiene la conexion con el portal.
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/session/cookies.ts` | Jar manual: `absorbCookies` + `cookieHeader` — axios no persiste cookies solo |
+| `src/session/rateLimit.ts` | Detecta rate-limit por contenido HTML (el portal devuelve 200, no 429) |
+| `src/session/retry.ts` | `withRetry` — 3 intentos con full-jitter; desincroniza storms de workers paralelos |
+| `src/session/session.ts` | Crea el cliente axios con 64 sockets y User-Agent Chrome; `fetchStartPage` abre sesion JSF |
+
+### Capa 3 — Protocolo JSF
+
+Los portales usan JavaServer Faces. Cada request HTTP tiene protocolo propio.
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/jsf/viewState.ts` | Extrae el token `javax.faces.ViewState` del HTML — necesario en cada POST |
+| `src/jsf/partialResponse.ts` | Parsea respuestas AJAX `<partial-response>` de JSF — detecta respuestas vacias |
+| `src/jsf/searchForm.ts` | Construye y envia el POST de busqueda con parametros de sector/distrito |
+| `src/jsf/pagination.ts` | POST de navegacion AJAX — avanza de pagina en pagina sin recargar |
+
+### Capa 4 — Parsers HTML
+
+Transforman el HTML crudo en estructuras tipadas.
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/parser/paginatorParser.ts` | Lee el texto del paginador para extraer pagina actual, total de paginas y registros |
+| `src/parser/rowParser.ts` | Extrae filas `<tr>` (PrimeFaces) o `<div>` repeat (RichFaces) como `ParsedRow[]` |
+| `src/parser/documentMapper.ts` | Convierte un `ParsedRow` en un `JudicialDocument` — aplica columnas de `SiteConfig` |
+| `src/parser/pageParser.ts` | Orquesta los parsers anteriores para producir un `ParsedPage` completo |
+
+### Capa 5 — PDF
+
+Dos estrategias segun el portal.
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/pdf/downloader.ts` | GET directo (`/ServletDescarga?uuid=`) para PJ Peru; POST JSF action para OEFA |
+| `src/scraper/pdfBatch.ts` | `buildCandidates` clasifica docs; `downloadCandidate` despacha; batches concurrentes |
+
+### Capa 6 — Bucle principal (el corazon)
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/scraper/sectorScraper.ts` | El loop completo: bootstrap → search → paginar → PDFs → checkpoint; soft-block detection |
+| `src/scraper/scraper.ts` | Orquesta multiples sectores en el mismo proceso |
+
+### Capa 7 — Entrada y paralelismo
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/config.ts` | Toda la configuracion por sitio: URLs, selectores CSS, columnas, tiempos, `rowParser` |
+| `src/cli.ts` | Flags CLI, validacion, arranca `scraper.ts` |
+| `scripts/parallel-sectors.mjs` | Lanza N procesos Node en paralelo, uno por sector OEFA |
+| `scripts/parallel-suprema-years.mjs` | Lanza N procesos por año — gestiona soft-blocks y retry |
 
 ## Licencia
 
