@@ -140,6 +140,47 @@ Lanza 34 workers de distrito con límite de 50 docs cada uno. Al terminar, revis
 | `npm run scrape:pjperu:suprema:years:resume` | Retoma Suprema desde checkpoint |
 | `npm run scrape:pjperu:suprema:years:retry` | Reintenta años con soft-block a concurrency 1 (ver `docs/retry-policy.md`) |
 
+## Rendimiento Observado
+
+Métricas reales medidas en run 2026-06-27 con VPN peruana compartida.
+
+### PJ Peru — Corte Suprema (sin PDFs, metadata pura)
+
+| Métrica | Valor |
+| --- | --- |
+| Workers simultáneos | 10–12 (particionado por año 2007–2026) |
+| Velocidad por worker | 80–120 docs/min |
+| Velocidad agregada | ~800–1,000 docs/min |
+| Docs en 75 min (10 años activos) | 43,000+ |
+| 429 detectados | 0 — el portal usa soft-block silencioso |
+| Años con soft-block | 12/20 — solucionados con `years:retry` |
+| Velocidad en retry (concurrency 1) | 105–120 docs/min — 46% más rápido que en paralelo |
+
+```bash
+# Para ver la velocidad sin esperar PDFs:
+npm run scrape:pjperu:suprema:years:test   # 4 años × 500 docs en ~5 min
+```
+
+### PJ Peru — Corte Superior (con PDFs)
+
+| Métrica | Valor |
+| --- | --- |
+| Workers simultáneos | 12 (34 distritos en 3 rondas) |
+| Velocidad por worker | 38–62 docs/min (incluye descarga PDF) |
+| PDFs descargados | 2,600+ en el run de sesión |
+| 429 detectados | 0 |
+
+### OEFA (con PDFs JSF POST)
+
+| Métrica | Valor |
+| --- | --- |
+| Velocidad metadata | 60–90 docs/min por sector |
+| Velocidad con PDFs | 8–30 docs/min (PDF JSF POST es el cuello de botella) |
+| PDFs confidenciales | ~8% del total — esperado, no son errores |
+| Timeouts PDF | Reintentados 3 veces con jitter; marcados `failedDownload` si persisten |
+
+> Los timeouts de PDF en OEFA son comportamiento esperado: el servidor JSF de OEFA tiene mayor latencia que PJ Peru. El scraper reintenta, registra y continúa — exactamente el requisito "continue after persistent PDF failure".
+
 ## Suite de Tests
 
 ```bash

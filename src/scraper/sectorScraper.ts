@@ -1,11 +1,22 @@
-import fs from 'fs';
 import { logger } from '../logger.js';
 import { ROWS_PER_PAGE } from '../config/constants.js';
 import * as display from '../display/terminal.js';
-import type { $Root, ParsedRow, Session } from '../models/internalTypes.js';
-import type { PageEvent, PdfDownloadResult, PdfFailure, RunMetrics } from '../models/metrics.js';
-import { pdfFailureFromDocument } from '../models/metrics.js';
+import type { $Root, ParsedPage, ParsedRow, Session } from '../models/internalTypes.js';
+import type { PageEvent, PdfFailure, RunMetrics } from '../models/metrics.js';
 import type { JudicialDocument, ScrapeOptions, SiteConfig } from '../types.js';
+import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js';
+import { fetchNextPage } from '../jsf/pagination.js';
+import { submitSearch } from '../jsf/searchForm.js';
+import { parsePage } from '../parser/pageParser.js';
+import { pageHasNext, parsePaginatorText } from '../parser/paginatorParser.js';
+import { parseRows } from '../parser/rowParser.js';
+import { rowToDocument } from '../parser/documentMapper.js';
+import { fetchStartPage } from '../session/session.js';
+import { withRetry } from '../session/retry.js';
+import { jitter } from '../utils/delay.js';
+import { emptyPdfStats, downloadPagePdfs } from './pdfBatch.js';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 /** Outcome of scraping one sector: document count and collected records. */
 export interface SectorResult {
@@ -23,154 +34,7 @@ export interface SectorContext {
   runLimit: number | null;
 }
 
-import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js'; // loadCheckpoint used for completed-flag only
-import { fetchNextPage } from '../jsf/pagination.js';
-import { submitSearch } from '../jsf/searchForm.js';
-import { parsePage } from '../parser/pageParser.js';
-import { pageHasNext, parsePaginatorText } from '../parser/paginatorParser.js';
-import { parseRows } from '../parser/rowParser.js';
-import { rowToDocument } from '../parser/documentMapper.js';
-import { downloadJsfActionPdf, downloadPdf } from '../pdf/downloader.js';
-import { fetchStartPage } from '../session/session.js';
-import { withRetry } from '../session/retry.js';
-import { jitter } from '../utils/delay.js';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface PagePdfStats {
-  pdfDownloadedThisPage: number;
-  pdfFailedThisPage: number;
-  pdfMissingThisPage: number;
-  pdfConfidentialThisPage: number;
-  pdfSkippedExistingThisPage: number;
-}
-
-interface PdfBatchInput {
-  docs: JudicialDocument[];
-  rows: ParsedRow[];
-  viewState: string;
-}
-
-interface PdfBatchOptions {
-  pdfDir: string;
-  pdfConcurrency: number;
-  metrics: RunMetrics;
-  failedPdfs: PdfFailure[];
-  onProgress?: (done: number, total: number) => void;
-}
-
-// ─── PDF helpers ──────────────────────────────────────────────────────────────
-
-const isConfidentialDocument = (doc: JudicialDocument): boolean =>
-  doc.rawCells.some(cell => /confidencial/i.test(cell));
-
-const recordPdfResult = (
-  doc: JudicialDocument,
-  result: PdfDownloadResult,
-  metrics: RunMetrics,
-  failedPdfs: PdfFailure[],
-): void => {
-  if (result.localPath) doc.pdfLocalPath = result.localPath;
-  if (result.latencyMs > 0) metrics.pdfLatencySamples.push(result.latencyMs);
-
-  if (result.status === 'downloaded') { metrics.totalPdfDownloaded++; return; }
-  if (result.status === 'skippedExisting') { metrics.totalSkippedExisting++; return; }
-
-  if (result.status === 'failedDownload') {
-    metrics.totalPdfFailed++;
-    failedPdfs.push(pdfFailureFromDocument(doc, result.status, 'PDF download failed', result.error));
-    return;
-  }
-
-  metrics.totalPdfMissing++;
-  if (result.status === 'confidential') metrics.totalPdfConfidential++;
-  failedPdfs.push(pdfFailureFromDocument(doc, result.status, result.error ?? result.status));
-};
-
-const updatePagePdfStats = (stats: PagePdfStats, result: PdfDownloadResult): void => {
-  if (result.status === 'downloaded') stats.pdfDownloadedThisPage++;
-  if (result.status === 'failedDownload') stats.pdfFailedThisPage++;
-  if (result.status === 'missingPdfUrl' || result.status === 'missingJsfAction') stats.pdfMissingThisPage++;
-  if (result.status === 'confidential') { stats.pdfMissingThisPage++; stats.pdfConfidentialThisPage++; }
-  if (result.status === 'skippedExisting') stats.pdfSkippedExistingThisPage++;
-};
-
-const emptyPdfStats = (): PagePdfStats => ({
-  pdfDownloadedThisPage: 0,
-  pdfFailedThisPage: 0,
-  pdfMissingThisPage: 0,
-  pdfConfidentialThisPage: 0,
-  pdfSkippedExistingThisPage: 0,
-});
-
-const downloadPagePdfs = async (
-  session: Session,
-  config: SiteConfig,
-  input: PdfBatchInput,
-  options: PdfBatchOptions,
-): Promise<PagePdfStats> => {
-  const { docs, rows, viewState } = input;
-  const { pdfDir, pdfConcurrency, metrics, failedPdfs, onProgress } = options;
-  const stats = emptyPdfStats();
-
-  // Classify candidates; non-candidates (confidential / missing) are resolved immediately.
-  type Candidate = { index: number; isJsf: boolean };
-  const candidates: Candidate[] = [];
-
-  for (let i = 0; i < docs.length; i++) {
-    const doc = docs[i];
-    const row = rows[i];
-    if (doc.pdfUrl) {
-      metrics.totalPdfCandidates++;
-      candidates.push({ index: i, isJsf: false });
-    } else if (row?.pdfJsfAction) {
-      metrics.totalPdfCandidates++;
-      candidates.push({ index: i, isJsf: true });
-    } else {
-      const isConfidential = isConfidentialDocument(doc);
-      const status = isConfidential ? 'confidential' : 'missingJsfAction';
-      const result: PdfDownloadResult = {
-        status,
-        localPath: null,
-        latencyMs: 0,
-        error: isConfidential ? 'OEFA marks this row as confidential' : 'No direct PDF URL or JSF action found',
-      };
-      recordPdfResult(doc, result, metrics, failedPdfs);
-      updatePagePdfStats(stats, result);
-    }
-  }
-
-  // Ensure the PDF directory exists even if it was deleted or never created mid-run.
-  fs.mkdirSync(pdfDir, { recursive: true });
-
-  // Download all PDF candidates concurrently in batches of pdfConcurrency.
-  // absorbCookies() in downloadJsfActionPdf is synchronous on promise resolution,
-  // so Node.js single-thread guarantees no cookie-jar race condition.
-  let doneCount = 0;
-  const totalCandidates = candidates.length;
-
-  for (let i = 0; i < candidates.length; i += pdfConcurrency) {
-    const chunk = candidates.slice(i, i + pdfConcurrency);
-    const results = await Promise.all(chunk.map(async ({ index, isJsf }) => ({
-      index,
-      result: isJsf
-        ? await downloadJsfActionPdf(session, config, { viewState, mojarra: rows[index].pdfJsfAction!, doc: docs[index], pdfDir }, metrics)
-        : await downloadPdf(session, docs[index], { pdfDir, retryWaitMs: config.timing.retryWaitMs }, metrics),
-    })));
-    for (const { index, result } of results) {
-      recordPdfResult(docs[index], result, metrics, failedPdfs);
-      updatePagePdfStats(stats, result);
-      onProgress?.(++doneCount, totalCandidates);
-    }
-    if (i + pdfConcurrency < candidates.length) await jitter(...config.timing.pdfDelayMs);
-  }
-
-  return stats;
-};
-
 // ─── Pagination helpers ───────────────────────────────────────────────────────
-
-import type { ParsedPage } from '../models/internalTypes.js';
 
 const resolveHasNextPage = (
   $: $Root,
@@ -448,10 +312,25 @@ export const scrapeSector = async (
     }
 
     // ── Advance to next page ───────────────────────────────────────────────
+    // OEFA's paginator renders a "next" button on the final page even when all
+    // records are already collected. Trust totalRecords over the DOM signal.
+    if (page.totalRecords !== null && totalScraped >= page.totalRecords) {
+      logger.info('All records collected - sector complete', { sector: `${sectorId}=${sectorName}`, totalScraped, totalRecords: page.totalRecords });
+      break;
+    }
     if (config.timing.pageDelayMs[1] > 0) await jitter(...config.timing.pageDelayMs);
-    const { $: next$, newViewState } = await advancePage(session, config, { page, pageIndex, sectorId, useRichFaces }, metrics);
-    page = buildNextPage(page, next$, newViewState, parseRows(next$, config, config.baseUrl), pageIndex + 1);
-    pageIndex++;
+    try {
+      const { $: next$, newViewState } = await advancePage(session, config, { page, pageIndex, sectorId, useRichFaces }, metrics);
+      page = buildNextPage(page, next$, newViewState, parseRows(next$, config, config.baseUrl), pageIndex + 1);
+      pageIndex++;
+    } catch (err) {
+      // All retries exhausted on page advance — treat as end of results rather than
+      // crashing and losing the docs already collected in this run.
+      logger.warn('Page advance failed after all retries — treating as end of results', {
+        sectorId, pageIndex, error: (err as Error).message,
+      });
+      break;
+    }
   }
 
   if (!dryRun) saveCheckpoint(site, sectorId, pageIndex, totalScraped, true, districtId, opts.checkpointId);

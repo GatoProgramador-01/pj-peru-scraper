@@ -30,6 +30,13 @@ const makeAgents = () => ({
   httpAgent: new http.Agent({ keepAlive: true, maxSockets: MAX_SOCKETS }),
 });
 
+/**
+ * Creates a reusable axios client with a shared cookie jar and keep-alive agents.
+ * MAX_SOCKETS=64 prevents Node's 5-socket-per-host default from serializing
+ * parallel workers (Suprema uses 12, Superior up to 34) behind a queue.
+ * The Chrome 125 UA matches the user-agent profile expected by the Peru judiciary
+ * portal — requests with a bot-looking UA are rejected before hitting the JSF layer.
+ */
 export const makeSession = (baseUrl: string, proxy?: string | null): Session => ({
   client: axios.create({
     baseURL: baseUrl,
@@ -49,6 +56,11 @@ export const makeSession = (baseUrl: string, proxy?: string | null): Session => 
   baseUrl,
 });
 
+/**
+ * GETs the portal start page, absorbs session cookies, and returns a Cheerio root.
+ * This must run before any search POST — the server uses this request to allocate
+ * a JSF ViewState slot and issue the JSESSIONID cookie.
+ */
 export const fetchStartPage = async (session: Session, url: string): Promise<$Root> => {
   logger.info('GET start page', { url });
   const resp: AxiosResponse<string> = await session.client.get(url, {
