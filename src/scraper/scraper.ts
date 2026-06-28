@@ -3,8 +3,8 @@ import path from 'path';
 import { logger } from '../logger.js';
 import { SITES } from '../config.js';
 import { createRunMetrics, type PageEvent, type PdfFailure } from '../models/metrics.js';
-import type { SectorContext } from '../models/scraperTypes.js';
-import type { ScrapeOptions } from '../types.js';
+import type { SectorContext, SectorResult } from '../models/scraperTypes.js';
+import type { ScrapeOptions, SiteConfig } from '../types.js';
 import { validateOutput } from '../output/validator.js';
 import { writeRunReports } from '../output/runReport.js';
 import { makeSession } from '../session/session.js';
@@ -24,6 +24,135 @@ const writeFailedPdfReport = (failedPdfPath: string, failedPdfs: PdfFailure[]): 
   fs.writeFileSync(failedPdfPath, JSON.stringify(failedPdfs, null, 2));
 };
 
+// ── Extracted helpers ────────────────────────────────────────────────────────
+
+/**
+ * Resolves the ordered list of [sectorId, sectorName] pairs to scrape.
+ * Discovery runs live against the site; config.search.sectors acts as a
+ * fallback when the live call returns nothing (e.g. site is down).
+ */
+const resolveSectorsToRun = async (
+  config: SiteConfig,
+  opts: ScrapeOptions,
+): Promise<Array<[string | null, string | null]>> => {
+  // Sites without a sector dropdown are treated as a single unnamed sector.
+  if (!config.search?.sectorField) return [[null, null]];
+
+  const discovered = await discoverSectors(opts.site, opts.proxy);
+  const sectors = Object.keys(discovered).length > 0 ? discovered : (config.search.sectors ?? {});
+
+  if (opts.sectorId !== null) {
+    // Caller requested one specific sector — ignore the rest.
+    return [[opts.sectorId, sectors[opts.sectorId] ?? opts.sectorId]];
+  }
+
+  if (Object.keys(sectors).length > 0) {
+    return Object.entries(sectors);
+  }
+
+  // Discovery returned nothing and config has no fallback — proceed without filter.
+  logger.warn('No sectors found - scraping without sector filter');
+  return [[null, null]];
+};
+
+/** Returns true when we have already collected as many docs as the caller requested. */
+const hasReachedGlobalLimit = (totalScraped: number, limit: number | null): boolean =>
+  limit !== null && totalScraped >= limit;
+
+/**
+ * Runs scrapeSector for a single sector, retrying once if the first attempt
+ * returns zero documents.
+ * Transient server glitch (JSF search POST returns 0 rows) — retry once with fresh session.
+ */
+const scrapeSectorWithRetry = async (
+  config: SiteConfig,
+  opts: ScrapeOptions,
+  sectorCtx: SectorContext,
+): Promise<SectorResult> => {
+  const session = makeSession(config.baseUrl, opts.proxy);
+  let result = await scrapeSector(session, config, opts, sectorCtx);
+
+  if (result.count === 0 && !opts.dryRun) {
+    logger.warn('Zero docs on first attempt — waiting 5s and retrying with fresh session', {
+      sectorId: sectorCtx.sectorId,
+      sectorName: sectorCtx.sectorName,
+    });
+    await sleep(5_000);
+    const retrySession = makeSession(config.baseUrl, opts.proxy);
+    result = await scrapeSector(retrySession, config, opts, sectorCtx);
+  }
+
+  return result;
+};
+
+/** Logs a one-line summary once a sector finishes, including cumulative progress. */
+const logSectorDone = (
+  i: number,
+  total: number,
+  sectorId: string | null,
+  sectorName: string | null,
+  sectorCount: number,
+  totalSoFar: number,
+  runStart: number,
+): void => {
+  const runSec = Math.round((Date.now() - runStart) / 1000);
+  logger.info(`Sector ${i + 1}/${total} done`, {
+    sector: `${sectorId}=${sectorName}`,
+    sectorDocs: sectorCount,
+    totalSoFar,
+    runElapsed: runSec < 60 ? `${runSec}s` : `${Math.floor(runSec / 60)}m${runSec % 60}s`,
+  });
+};
+
+/**
+ * Inserts a random 5–10 s pause before the next sector to avoid hammering
+ * the server with back-to-back requests.
+ */
+const pauseBetweenSectors = async (next: [string | null, string | null]): Promise<void> => {
+  const pause = 5_000 + Math.floor(Math.random() * 5_000);
+  logger.info(`Pausing ${Math.round(pause / 1000)}s before next sector: ${next[1] ?? next[0]}`, { pauseMs: pause });
+  await sleep(pause);
+};
+
+/** Derives the human-readable stats shown in the final run summary. */
+const calcRunStats = (
+  metrics: ReturnType<typeof createRunMetrics>,
+  elapsedMs: number,
+): { elapsedMin: number; totalPdfCompleted: number; avgPdfLatencyMs: number; docsPerMinute: number; pdfsPerMinute: number } => {
+  const elapsedMin = Math.max(elapsedMs / 60_000, 0.001);
+  const totalPdfCompleted = metrics.totalPdfDownloaded + metrics.totalSkippedExisting;
+  const avgPdfLatencyMs = metrics.pdfLatencySamples.length > 0
+    ? Math.round(metrics.pdfLatencySamples.reduce((sum, ms) => sum + ms, 0) / metrics.pdfLatencySamples.length)
+    : 0;
+  return {
+    elapsedMin,
+    totalPdfCompleted,
+    avgPdfLatencyMs,
+    docsPerMinute: Math.round(metrics.totalDocumentsCollected / elapsedMin),
+    pdfsPerMinute: Math.round(totalPdfCompleted / elapsedMin),
+  };
+};
+
+/**
+ * Flushes all collected documents to JSONL and, if any PDFs failed,
+ * writes a structured failure report alongside the main output.
+ */
+const writeScrapeOutput = (
+  opts: ScrapeOptions,
+  allDocs: JudicialDocument[],
+  failedPdfs: PdfFailure[],
+): void => {
+  if (!opts.dryRun && allDocs.length > 0) {
+    fs.writeFileSync(opts.outputPath, allDocs.map(d => JSON.stringify(d)).join('\n') + '\n');
+  }
+  if (failedPdfs.length > 0 && !opts.dryRun) {
+    const failedPdfPath = opts.failedPdfPath ?? path.join(path.dirname(opts.outputPath), 'failed-pdfs.json');
+    writeFailedPdfReport(failedPdfPath, failedPdfs);
+  }
+};
+
+// ── Orchestrator ─────────────────────────────────────────────────────────────
+
 export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
   const config = SITES[opts.site];
   if (!config) throw new Error(`Unknown site: ${opts.site}. Available: ${Object.keys(SITES).join(', ')}`);
@@ -31,24 +160,7 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
   fs.mkdirSync(path.dirname(opts.outputPath), { recursive: true });
   if (opts.pdfDir && !opts.dryRun) fs.mkdirSync(opts.pdfDir, { recursive: true });
 
-  // Determine sectors to scrape
-  let sectorsToRun: Array<[string | null, string | null]>;
-
-  if (config.search?.sectorField) {
-    const discovered = await discoverSectors(opts.site, opts.proxy);
-    const sectors = Object.keys(discovered).length > 0 ? discovered : (config.search.sectors ?? {});
-
-    if (opts.sectorId !== null) {
-      sectorsToRun = [[opts.sectorId, sectors[opts.sectorId] ?? opts.sectorId]];
-    } else if (Object.keys(sectors).length > 0) {
-      sectorsToRun = Object.entries(sectors);
-    } else {
-      logger.warn('No sectors found - scraping without sector filter');
-      sectorsToRun = [[null, null]];
-    }
-  } else {
-    sectorsToRun = [[null, null]];
-  }
+  const sectorsToRun = await resolveSectorsToRun(config, opts);
 
   logger.info('Sectors queued', { count: sectorsToRun.length, sectors: sectorsToRun.map(([id, name]) => `${id}=${name}`).join(', ') });
 
@@ -64,69 +176,34 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
   let totalScraped = 0;
   const runStart = Date.now();
 
+  // ── Sector loop ────────────────────────────────────────────────────────────
   for (let i = 0; i < sectorsToRun.length; i++) {
-    if (opts.limit !== null && totalScraped >= opts.limit) {
-      logger.info('Global limit reached', { limit: opts.limit });
-      break;
-    }
+    if (hasReachedGlobalLimit(totalScraped, opts.limit)) break;
 
     const [sectorId, sectorName] = sectorsToRun[i];
     const sectorLimit = opts.limit !== null ? opts.limit - totalScraped : null;
-    const sectorOpts: ScrapeOptions = { ...opts, limit: sectorLimit };
+    const sectorCtx: SectorContext = { sectorId, sectorName, metrics, failedPdfs, pageEvents, runLimit: opts.limit };
 
     logger.info(`-- Sector ${i + 1}/${sectorsToRun.length}: ${sectorName ?? sectorId} --`, { sectorId, sectorName });
     display.sectorBanner(i + 1, sectorsToRun.length, sectorId, sectorName, null);
-    const sectorCtx: SectorContext = { sectorId, sectorName, metrics, failedPdfs, pageEvents, runLimit: opts.limit };
-    const session = makeSession(config.baseUrl, opts.proxy);
-    let result = await scrapeSector(session, config, sectorOpts, sectorCtx);
 
-    // Transient server glitch (JSF search POST returns 0 rows) — retry once with fresh session.
-    if (result.count === 0 && !opts.dryRun) {
-      logger.warn('Zero docs on first attempt — waiting 5s and retrying with fresh session', { sectorId, sectorName });
-      await sleep(5_000);
-      const retrySession = makeSession(config.baseUrl, opts.proxy);
-      result = await scrapeSector(retrySession, config, sectorOpts, sectorCtx);
-    }
+    const result = await scrapeSectorWithRetry(config, { ...opts, limit: sectorLimit }, sectorCtx);
 
     allDocs.push(...result.docs);
     totalScraped += result.count;
+    logSectorDone(i, sectorsToRun.length, sectorId, sectorName, result.count, totalScraped, runStart);
 
-    const runSec = Math.round((Date.now() - runStart) / 1000);
-    logger.info(`Sector ${i + 1}/${sectorsToRun.length} done`, {
-      sector: `${sectorId}=${sectorName}`,
-      sectorDocs: result.count,
-      totalSoFar: totalScraped,
-      runElapsed: runSec < 60 ? `${runSec}s` : `${Math.floor(runSec / 60)}m${runSec % 60}s`,
-    });
-
-    if (opts.limit !== null && totalScraped >= opts.limit) {
-      logger.info('Global limit reached after sector', { limit: opts.limit, totalScraped });
-      break;
-    }
-
-    if (i < sectorsToRun.length - 1) {
-      const pause = 5_000 + Math.floor(Math.random() * 5_000);
-      const next = sectorsToRun[i + 1];
-      logger.info(`Pausing ${Math.round(pause / 1000)}s before next sector: ${next[1] ?? next[0]}`, { pauseMs: pause });
-      await sleep(pause);
-    }
+    if (hasReachedGlobalLimit(totalScraped, opts.limit)) break;
+    if (i < sectorsToRun.length - 1) await pauseBetweenSectors(sectorsToRun[i + 1]);
   }
 
-  if (!opts.dryRun && allDocs.length > 0) {
-    fs.writeFileSync(opts.outputPath, allDocs.map(d => JSON.stringify(d)).join('\n') + '\n');
-  }
-  if (failedPdfs.length > 0 && !opts.dryRun) {
-    writeFailedPdfReport(opts.failedPdfPath ?? path.join(path.dirname(opts.outputPath), 'failed-pdfs.json'), failedPdfs);
-  }
-
+  // ── Write output ───────────────────────────────────────────────────────────
+  writeScrapeOutput(opts, allDocs, failedPdfs);
   validateOutput(opts.outputPath, totalScraped, opts.dryRun);
 
+  // ── Run metrics ────────────────────────────────────────────────────────────
   const elapsedMs = Date.now() - runStart;
-  const elapsedMin = Math.max(elapsedMs / 60_000, 0.001);
-  const totalPdfCompleted = metrics.totalPdfDownloaded + metrics.totalSkippedExisting;
-  const avgPdfLatencyMs = metrics.pdfLatencySamples.length > 0
-    ? Math.round(metrics.pdfLatencySamples.reduce((sum, ms) => sum + ms, 0) / metrics.pdfLatencySamples.length)
-    : 0;
+  const { elapsedMin, totalPdfCompleted, avgPdfLatencyMs, docsPerMinute, pdfsPerMinute } = calcRunStats(metrics, elapsedMs);
 
   logger.info('Run metrics', {
     totalDocumentsCollected: metrics.totalDocumentsCollected,
@@ -139,8 +216,8 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     total429: metrics.total429,
     totalRetries: metrics.totalRetries,
     elapsedTime: formatDuration(elapsedMs),
-    docsPerMinute: Math.round(metrics.totalDocumentsCollected / elapsedMin),
-    pdfsPerMinute: Math.round(totalPdfCompleted / elapsedMin),
+    docsPerMinute,
+    pdfsPerMinute,
     avgPdfLatencyMs,
     failedPdfReport: failedPdfs.length > 0 ? (opts.failedPdfPath ?? path.join(path.dirname(opts.outputPath), 'failed-pdfs.json')) : null,
   });
@@ -151,8 +228,8 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
       metrics,
       pageEvents,
       elapsedMs,
-      docsPerMinute: Math.round(metrics.totalDocumentsCollected / elapsedMin),
-      pdfsPerMinute: Math.round(totalPdfCompleted / elapsedMin),
+      docsPerMinute,
+      pdfsPerMinute,
       avgPdfLatencyMs,
       totalScraped,
     })
@@ -178,8 +255,8 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
       ['Failed downloads', metrics.totalPdfFailed],
       ['HTTP 429 events', metrics.total429],
       ['Total retries', metrics.totalRetries],
-      ['Docs / min', Math.round(metrics.totalDocumentsCollected / elapsedMin)],
-      ['PDFs / min', Math.round(totalPdfCompleted / elapsedMin)],
+      ['Docs / min', docsPerMinute],
+      ['PDFs / min', pdfsPerMinute],
       ['Avg PDF latency', `${avgPdfLatencyMs} ms`],
       ['Duration', formatDuration(elapsedMs)],
     ],

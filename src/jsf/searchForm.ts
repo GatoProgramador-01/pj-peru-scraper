@@ -1,3 +1,24 @@
+/**
+ * JSF search form submission — two protocols, one entry point.
+ *
+ * Flow:
+ *   1. buildSearchBody     — assemble the POST params (AJAX or classic, see below)
+ *   2. postSearchForm      — POST to the form URL with JSF/AJAX headers
+ *   3. handleSearchRedirect — some portals respond with a 3xx redirect to a results page
+ *   4. parseSearchResponse  — extract rows, paginator, and new ViewState from the response
+ *
+ * Two search protocols are supported:
+ *
+ *   AJAX (search.ajax = true, used by OEFA):
+ *     - POST includes javax.faces.partial.ajax=true so the server returns a partial-response
+ *       XML envelope instead of a full page. We extract the inner HTML fragment and parse it.
+ *
+ *   Classic (search.ajax = false, used by PJ Peru Superior with district redirect):
+ *     - POST looks like a normal browser form submission. The server may respond with a 3xx
+ *       redirect to a separate results URL. We follow the redirect and parse the full page.
+ *
+ * ViewState is always appended last — the server uses it to rehydrate the component tree.
+ */
 import { type AxiosResponse } from 'axios';
 import { load as cheerioLoad } from 'cheerio';
 import { logger } from '../logger.js';
@@ -12,6 +33,8 @@ import { extractPartialResponse } from './partialResponse.js';
 
 const encodeFormBody = (params: [string, string][]): string =>
   params.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+
+// ── Request body builders ──────────────────────────────────────────────────────
 
 const appendSearchOverrides = (
   params: [string, string][],
@@ -70,11 +93,17 @@ const buildSearchBody = (target: SearchTarget, filter: SearchFilter): string =>
       : buildClassicSearchParams(target, filter),
   );
 
+// ── HTTP layer ─────────────────────────────────────────────────────────────────
+
+// AJAX searches need two extra headers so the server returns a partial-response
+// XML envelope instead of a full HTML page.
 const ajaxHeaders = (target: SearchTarget): Record<string, string> =>
   target.config.search!.ajax
     ? { 'Faces-Request': 'partial/ajax', 'X-Requested-With': 'XMLHttpRequest' }
     : {};
 
+// Classic (non-AJAX) portals may redirect to a separate results URL after submit.
+// We capture the redirect by disabling axios's automatic follow and reading Location manually.
 const shouldCaptureRedirect = (target: SearchTarget): boolean =>
   Boolean(target.config.resultsUrl);
 
@@ -108,6 +137,8 @@ const forceHttpsRedirect = (location: string): string =>
 const stripUrlState = (url: string): string =>
   url.split('?')[0].split(';')[0];
 
+// ── Redirect handling (classic portals only) ───────────────────────────────────
+
 const followSearchRedirect = async (
   session: Session,
   target: SearchTarget,
@@ -133,6 +164,11 @@ const handleSearchRedirect = (
     ? followSearchRedirect(session, target, redirectLocation(resp))
     : null;
 
+// ── Response parsers ───────────────────────────────────────────────────────────
+
+// AJAX response: extract the HTML fragment from the partial-response XML, then
+// rebuild the ParsedPage by merging updated rows/paginator into the prior page state.
+// We carry forward the existing viewState/totalPages when the partial doesn't include them.
 const parseAjaxSearchResponse = (target: SearchTarget, xml: string): ParsedPage => {
   const { page, config } = target;
   const { html, newViewState } = extractPartialResponse(xml);
@@ -149,11 +185,23 @@ const parseAjaxSearchResponse = (target: SearchTarget, xml: string): ParsedPage 
   };
 };
 
+// Classic response: the server returned a full HTML page (either directly or after redirect).
 const parseSearchResponse = (target: SearchTarget, html: string): ParsedPage =>
   target.config.search!.ajax
     ? parseAjaxSearchResponse(target, html)
     : parsePage(cheerioLoad(html), target.config, target.config.baseUrl);
 
+// ── Entry point ────────────────────────────────────────────────────────────────
+
+/**
+ * Submit the JSF search form and return the first results page.
+ *
+ * Steps:
+ *   1. Build POST body (AJAX or classic params, with sector/district overrides)
+ *   2. POST to the form URL; absorb any new cookies from Set-Cookie
+ *   3. If the response is a 3xx redirect (classic portals), follow it and return the page
+ *   4. Otherwise parse the response — AJAX partial XML or full HTML — into a ParsedPage
+ */
 export const submitSearch = async (
   session: Session,
   target: SearchTarget,
@@ -165,6 +213,7 @@ export const submitSearch = async (
   const resp = await postSearchForm(session, target, buildSearchBody(target, filter));
   absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
 
+  // Classic portals (pj-peru Superior) redirect to a results URL after submit.
   const redirectedPage = await handleSearchRedirect(session, target, resp);
   if (redirectedPage) return redirectedPage;
 

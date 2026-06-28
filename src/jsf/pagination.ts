@@ -14,6 +14,8 @@ const dataTableIdFromPaginator = (page: ParsedPage): string => {
   return paginatorId.replace(/_paginator(?:_[^:]+)?$/, '');
 };
 
+// PrimeFaces AJAX pagination: posts form fields that identify the DataTable component,
+// the target page offset (first row index), and the number of rows per page.
 const primeFacesPaginationParams = (
   page: ParsedPage,
   targetPageIndex: number,
@@ -41,6 +43,8 @@ export const buildPaginationBody = (page: ParsedPage, targetPageIndex: number, r
 const richFacesDataScroller = (): string =>
   'formBuscador:data1';
 
+// RichFaces AJAX pagination (pj-peru): posts via a DataScroller component, identified
+// by its fixed ID 'formBuscador:data1'. Page is sent as a 1-based integer, not a row offset.
 const richFacesPaginationParams = (page: ParsedPage, targetPageIndex: number): [string, string][] => {
   const scroller = richFacesDataScroller();
   return [
@@ -91,6 +95,8 @@ const assertNotRateLimited = (html: string, targetPageIndex: number): void => {
 };
 
 const requirePartialHtml = (html: string | null, targetPageIndex: number): string => {
+  // Throw — not return null — so withRetry retries the AJAX request. Returning null here
+  // would silently treat an empty partial as end-of-results and truncate the run.
   if (!html) {
     // Throw so withRetry retries the AJAX request: falling back to a full GET
     // returns the empty search form (0 rows) and silently truncates the run.
@@ -99,6 +105,8 @@ const requirePartialHtml = (html: string | null, targetPageIndex: number): strin
   return html;
 };
 
+// RichFaces AJAX responses sometimes return bare <tr> elements without a parent <table>.
+// Cheerio cannot parse a detached <tr>, so we wrap it before loading into the DOM.
 const wrapLooseTableRows = (html: string): string =>
   html.trim().startsWith('<tr')
     ? `<table><tbody>${html}</tbody></table>`
@@ -113,6 +121,9 @@ const parsePaginationPartial = (
   return { $: cheerioLoad(fragment), newViewState };
 };
 
+// Entry point for all paginator advances. Delegates to either PrimeFaces or RichFaces
+// body builders based on req.useRichFaces, then posts the AJAX request and parses
+// the partial-response XML into a cheerio root + refreshed ViewState.
 export const fetchNextPage = async (
   session: Session,
   url: string,

@@ -91,6 +91,32 @@ Debe devolver `200` antes de correr comandos PJ Peru.
 | `npm run scrape:pjperu:suprema:years` | Extraccion Suprema particionada por anio |
 | `npm run scrape:pjperu:suprema:years:retry` | Retry secuencial de anios con soft-block |
 
+## Variables de Entorno
+
+Todas son opcionales — el scraper funciona sin configurar ninguna. Copiar `.env.example` a `.env` y editar lo necesario:
+
+```bash
+cp .env.example .env
+# editar con cualquier editor, luego:
+export $(grep -v '^#' .env | xargs)
+```
+
+O setear inline por comando:
+
+```bash
+PDF_CONCURRENCY=4 npm run scrape:oefa:test100
+```
+
+| Variable | Por defecto | Cuando cambiarla |
+| --- | --- | --- |
+| `PDF_CONCURRENCY` | `1` | Subir a 4-10 en OEFA para acelerar descargas |
+| `PROBE_429_TOTAL` | `500` | Bajar a 50 para una sonda rapida |
+| `PROBE_429_CONCURRENCY` | `20` | Ajustar al nivel que se quiere testear |
+| `PROBE_429_STOP_ON_FIRST` | `true` | `false` para recolectar todos los 429 |
+| `PROBE_429_MODE` | `search` | `get` para un GET simple sin ViewState |
+
+Ver `.env.example` para la lista completa con descripciones.
+
 ## Politica De Retry
 
 Hay dos casos distintos:

@@ -7,4 +7,5 @@ profile/
 chrome-profile/
 *.env
 .env.*
+!.env.example
 CLAUDE.local.md
