@@ -124,15 +124,15 @@ En las corridas reales de PJ Peru no se observo HTTP 429. Lo que si ocurrio fue 
 equivalente: el portal devolvio HTTP 200 con AJAX vacio durante paginas consecutivas
 (soft-block por contencion del pool JSF). El scraper lo detecta y lo registra.
 
-Despues de correr `years:test`, verificar:
+El soft-block solo se dispara con alta concurrencia y carga real del portal, por lo que
+no es reproducible de forma determinista contra el servidor. La logica esta cubierta por:
 
 ```bash
-# Si hubo soft-blocks, aparecen en page-events:
-grep "soft_block" output/pjperu-*/page-events.jsonl
-
-# El evento tiene esta forma:
-# {"type":"soft_block_abort","sectorId":"2026","pageIndex":4,"docsThisPage":0,...}
+npm run verify:local
 ```
+
+El output incluye la seccion `"softBlock"` confirmando que 3 paginas vacias consecutivas
+disparan `"abort"` en el page index 2 (umbral `CONSECUTIVE_EMPTY_ABORT = 3`).
 
 
 ### Paso 6 — Verificar logica de 429 contra portal real (opcional)

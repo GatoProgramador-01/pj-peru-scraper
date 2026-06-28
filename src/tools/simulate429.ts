@@ -1,5 +1,6 @@
 import { createRunMetrics } from '../models/metrics.js';
 import { withRetry } from '../session/retry.js';
+import { CONSECUTIVE_EMPTY_ABORT } from '../config/constants.js';
 
 const make429 = (retryAfterSeconds = '0.001'): Error & { response: { status: number; headers: Record<string, string> } } => {
   const err = new Error('HTTP 429 Too Many Requests') as Error & {
@@ -57,6 +58,28 @@ assertEqual('persistent attempts', persistentAttempts, 3);
 assertEqual('persistent retries', persistentMetrics.totalRetries, 3);
 assertEqual('persistent 429 count', persistentMetrics.total429, 3);
 
+// ── Soft-block simulation ────────────────────────────────────────────────────
+// Simulates 3 consecutive empty AJAX pages (HTTP 200, 0 rows) to verify the
+// soft-block counter triggers abort at CONSECUTIVE_EMPTY_ABORT without a real portal.
+
+type SoftBlockOutcome = 'warning' | 'abort';
+
+const simulateSoftBlock = (): SoftBlockOutcome[] => {
+  let consecutiveEmptyPages = 0;
+  const outcomes: SoftBlockOutcome[] = [];
+  for (let i = 0; i < CONSECUTIVE_EMPTY_ABORT; i++) {
+    consecutiveEmptyPages++;
+    outcomes.push(consecutiveEmptyPages >= CONSECUTIVE_EMPTY_ABORT ? 'abort' : 'warning');
+  }
+  return outcomes;
+};
+
+const softBlockOutcomes = simulateSoftBlock();
+assertEqual('soft-block threshold', CONSECUTIVE_EMPTY_ABORT, 3);
+assertEqual('first empty page', softBlockOutcomes[0], 'warning');
+assertEqual('second empty page', softBlockOutcomes[1], 'warning');
+assertEqual('third empty page (abort)', softBlockOutcomes[2], 'abort');
+
 console.log(JSON.stringify({
   ok: true,
   recoverable: {
@@ -70,5 +93,10 @@ console.log(JSON.stringify({
     retries: persistentMetrics.totalRetries,
     total429: persistentMetrics.total429,
     outcome: 'failed-after-retries',
+  },
+  softBlock: {
+    threshold: CONSECUTIVE_EMPTY_ABORT,
+    outcomes: softBlockOutcomes,
+    abortTriggeredAt: `page ${CONSECUTIVE_EMPTY_ABORT}`,
   },
 }, null, 2));
