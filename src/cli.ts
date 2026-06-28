@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 /**
  * CLI — entry point for the HTTP scraper and recon tool.
  *

@@ -172,11 +172,13 @@ Sonda el portal OEFA con 500 requests concurrentes para encontrar el threshold d
 
 ## Configuracion Inicial: crear tu .env
 
-Antes de correr cualquier comando, crear el archivo `.env` desde la plantilla:
+Copiar la plantilla y editar los valores que necesites:
 
 ```bash
 cp .env.example .env
 ```
+
+El scraper carga `.env` automaticamente al arrancar. No es necesario exportar variables en la terminal.
 
 Para los tests de esta guia, el `.env` recomendado es:
 
@@ -185,19 +187,6 @@ Para los tests de esta guia, el `.env` recomendado es:
 PDF_CONCURRENCY=4          # descargas PDF concurrentes por pagina (por defecto: 1)
 PROBE_429_TOTAL=100        # requests para la sonda 429 (reducir para test rapido)
 PROBE_429_CONCURRENCY=10   # concurrencia de la sonda (ajustar al umbral a testear)
-```
-
-Cargar las variables en la sesion de terminal actual:
-
-```bash
-# Linux / Mac / WSL:
-export $(grep -v '^#' .env | xargs)
-
-# Windows PowerShell:
-Get-Content .env | Where-Object { $_ -notmatch '^#' -and $_ -ne '' } | ForEach-Object { $k,$v = $_ -split '=',2; [System.Environment]::SetEnvironmentVariable($k, $v, 'Process') }
-
-# O simplemente setear inline por comando (no requiere cargar el archivo):
-PDF_CONCURRENCY=4 npm run scrape:oefa:test100
 ```
 
 Todas las variables tienen valores por defecto — el scraper funciona sin `.env`. Ver `.env.example` para la lista completa con descripciones.

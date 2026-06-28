@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 /**
  * Rate-limit probe for OEFA (and any JSF portal).
  *
