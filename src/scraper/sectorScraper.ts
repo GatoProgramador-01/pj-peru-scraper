@@ -152,8 +152,8 @@ const downloadPagePdfs = async (
     const results = await Promise.all(chunk.map(async ({ index, isJsf }) => ({
       index,
       result: isJsf
-        ? await downloadJsfActionPdf(session, config, viewState, rows[index].pdfJsfAction!, docs[index], pdfDir, metrics)
-        : await downloadPdf(session, docs[index], pdfDir, config.timing.retryWaitMs, metrics),
+        ? await downloadJsfActionPdf(session, config, { viewState, mojarra: rows[index].pdfJsfAction!, doc: docs[index], pdfDir }, metrics)
+        : await downloadPdf(session, docs[index], { pdfDir, retryWaitMs: config.timing.retryWaitMs }, metrics),
     })));
     for (const { index, result } of results) {
       recordPdfResult(docs[index], result, metrics, failedPdfs);

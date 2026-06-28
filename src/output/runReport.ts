@@ -1,12 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import type { PageEvent, PdfFailure, RunMetrics } from '../models/metrics.js';
+import type { PageEvent, RunMetrics } from '../models/metrics.js';
 import type { ScrapeOptions } from '../types.js';
 
 export interface RunReportInput {
   opts: ScrapeOptions;
   metrics: RunMetrics;
-  failedPdfs: PdfFailure[];
   pageEvents: PageEvent[];
   elapsedMs: number;
   docsPerMinute: number;
@@ -33,7 +32,6 @@ const writeJsonl = (filePath: string, rows: unknown[]): void => {
 export const writeRunReports = ({
   opts,
   metrics,
-  failedPdfs: _failedPdfs,
   pageEvents,
   elapsedMs,
   docsPerMinute,
@@ -45,14 +43,14 @@ export const writeRunReports = ({
   const summaryPath = path.join(outputDir, 'run-summary.json');
   const pageEventsPath = path.join(outputDir, 'page-events.jsonl');
   const markdownPath = path.join(outputDir, 'run-report.md');
+  const failedPdfPath = opts.failedPdfPath ?? path.join(outputDir, 'failed-pdfs.json');
 
-  const pdfExpectedUnavailable = metrics.totalPdfConfidential + (metrics.totalPdfMissing - metrics.totalPdfConfidential);
   const summary = {
     run: {
       site: opts.site,
       outputPath: opts.outputPath,
       pdfDir: opts.pdfDir,
-      failedPdfPath: opts.failedPdfPath ?? path.join(outputDir, 'failed-pdfs.json'),
+      failedPdfPath,
       targetDocuments: opts.limit,
       totalScraped,
       elapsedMs,
@@ -68,7 +66,6 @@ export const writeRunReports = ({
       totalPdfFailed: metrics.totalPdfFailed,
       totalPdfMissing: metrics.totalPdfMissing,
       totalPdfConfidential: metrics.totalPdfConfidential,
-      pdfExpectedUnavailable,
       total429: metrics.total429,
       totalRetries: metrics.totalRetries,
       docsPerMinute,
@@ -82,7 +79,7 @@ export const writeRunReports = ({
     artifacts: {
       jsonl: opts.outputPath,
       pdfDir: opts.pdfDir,
-      failedPdfs: opts.failedPdfPath ?? path.join(outputDir, 'failed-pdfs.json'),
+      failedPdfs: failedPdfPath,
       pageEvents: pageEventsPath,
       markdownReport: markdownPath,
     },
@@ -100,7 +97,7 @@ export const writeRunReports = ({
     `- Elapsed: ${duration(elapsedMs)}`,
     `- Output JSONL: \`${opts.outputPath}\``,
     `- PDF directory: \`${opts.pdfDir ?? 'none'}\``,
-    `- Failed/missing PDF report: \`${opts.failedPdfPath ?? path.join(outputDir, 'failed-pdfs.json')}\``,
+    `- Failed/missing PDF report: \`${failedPdfPath}\``,
     '',
     '## PDF Outcome',
     '',

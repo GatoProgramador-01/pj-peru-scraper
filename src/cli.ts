@@ -11,6 +11,8 @@
  *   node dist/cli.js --site pj-peru --proxy http://user:pass@host:3128 --pdfs
  */
 
+import fs from 'fs';
+import path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { scrapeAll, discoverSectors } from './http-scraper.js';
@@ -102,8 +104,6 @@ const argv = await yargs(hideBin(process.argv))
   .parseAsync();
 
 if (argv['fresh-output']) {
-  const fs = await import('fs');
-  const path = await import('path');
   fs.rmSync(argv.out, { force: true });
   fs.rmSync(path.join(path.dirname(argv.out), 'failed-pdfs.json'), { force: true });
 }
@@ -116,11 +116,12 @@ if (argv['discover-sectors']) {
   process.exit(0);
 }
 
+const outputDir = path.dirname(argv.out);
 const opts: ScrapeOptions = {
   site: argv.site,
   outputPath: argv.out,
   pdfDir: argv.pdfs ? (argv['pdf-dir'] ?? './pdfs') : null,
-  failedPdfPath: 'failed-pdfs.json',
+  failedPdfPath: path.join(outputDir, 'failed-pdfs.json'),
   limit: argv.limit ?? null,
   dryRun: argv['dry-run'],
   proxy: argv.proxy ?? null,
@@ -134,12 +135,10 @@ const opts: ScrapeOptions = {
     ...(argv.specialty ? { 'formBuscador:buEspecialidad': argv.specialty } : {}),
   },
   checkpointId: argv['checkpoint-id'] ?? null,
-  pdfConcurrency: Math.max(1, argv['pdf-concurrency'] ?? 1),
+  pdfConcurrency: Math.max(1, argv['pdf-concurrency']),
 };
 
 if (Object.keys(opts.searchFields ?? {}).length === 0) delete opts.searchFields;
-
-opts.failedPdfPath = `${opts.outputPath.replace(/[^/\\]+$/, '')}failed-pdfs.json`;
 
 logger.info('Starting scrape', {
   site: opts.site,

@@ -148,7 +148,6 @@ export const scrapeAll = async (opts: ScrapeOptions): Promise<void> => {
     ? writeRunReports({
       opts,
       metrics,
-      failedPdfs,
       pageEvents,
       elapsedMs,
       docsPerMinute: Math.round(metrics.totalDocumentsCollected / elapsedMin),

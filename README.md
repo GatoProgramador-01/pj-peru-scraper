@@ -36,6 +36,87 @@ Simulacion reproducible de rate limiting:
 npm run simulate:429
 ```
 
+## Etapas de Verificación
+
+Para evaluar el scraper sin necesidad de correr extracciones completas. Cada etapa es independiente y acotada en tiempo.
+
+| Etapa | Comando | Requisito | Tiempo | Qué valida |
+| --- | --- | --- | --- | --- |
+| **0 — Build** | `npm run build` | Ninguno | ~5s | TypeScript compila sin errores |
+| **1 — Simulate 429** | `npm run simulate:429` | Ninguno | ~10s | Retry/backoff determinístico local |
+| **2 — OEFA smoke** | `npm run scrape:oefa:test100` | Red pública | ~7min | Extracción real + PDFs, sin VPN |
+| **3 — OEFA paralelo** | `npm run scrape:oefa:parallel` | Red pública | ~3min | 5 sectores en paralelo, ~1,700 docs |
+| **4 — PJ Peru dry-run** | `node dist/cli.js --site pj-peru --dry-run --limit 20` | VPN Perú | ~1min | Sesión JSF + búsqueda + paginación |
+| **5 — PJ Peru acotado** | `npm run scrape:pjperu:districts:test` | VPN Perú | ~5min | 34 distritos × 50 docs, con PDFs |
+
+### Etapa 0 — Build
+
+```bash
+npm install
+npm run build
+```
+
+Salida esperada: `tsc` sin output (cero errores). El compilador falla si hay tipos rotos.
+
+### Etapa 1 — Simulate 429 (sin red)
+
+```bash
+npm run simulate:429
+```
+
+Salida esperada:
+```json
+{ "ok": true, "recoverable": { "outcome": "ok" }, "persistent": { "outcome": "failed-after-retries" } }
+```
+
+Valida el comportamiento de retry sin depender del servidor real.
+
+### Etapa 2 — OEFA smoke (red pública, sin VPN, ~7min)
+
+```bash
+npm run scrape:oefa:test100
+```
+
+Qué revisar al terminar:
+- `output/run-summary.json` → `totalDocumentsCollected: 100`, `total429: 0`
+- `output/pdfs/` → al menos 80 PDFs (el resto son confidenciales de OEFA, no errores)
+- `output/failed-pdfs.json` → los que aparezcan como `"status":"confidential"` son esperados
+
+### Etapa 3 — OEFA paralelo (red pública, ~3min)
+
+```bash
+npm run scrape:oefa:parallel
+```
+
+Lanza 5 sectores en paralelo. Al terminar el más lento (~3min), revisa la carpeta de salida timestamped en `output/runs/`. Confirmar ~1,700 docs totales entre los 5 sectores.
+
+### Etapa 4 — PJ Peru dry-run (requiere VPN Perú activa)
+
+Verificar VPN antes de correr:
+```bash
+curl -s https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml -o /dev/null -w "%{http_code}\n"
+# Debe retornar 200
+```
+
+```bash
+node dist/cli.js --site pj-peru --dry-run --limit 20
+```
+
+Salida esperada en el log: `Search complete`, `Page scraped`, exactamente 20 docs en 2 páginas. Sin escritura a disco.
+
+### Etapa 5 — PJ Peru acotado con PDFs (requiere VPN Perú, ~5min)
+
+```bash
+npm run scrape:pjperu:districts:test
+```
+
+Lanza 34 workers de distrito con límite de 50 docs cada uno. Al terminar, revisa:
+- `output/pjperu-districts/all-districts.jsonl` → ~1,700 líneas
+- `output/pjperu-districts/pdfs/` → PDFs descargados
+- Workers con `completed: false` en su checkpoint son reintentables con `--resume`
+
+---
+
 ## Scripts Principales
 
 | Script | Uso |
