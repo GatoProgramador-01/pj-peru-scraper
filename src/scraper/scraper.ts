@@ -3,13 +3,14 @@ import path from 'path';
 import { logger } from '../logger.js';
 import { SITES } from '../config.js';
 import { createRunMetrics, type PageEvent, type PdfFailure } from '../models/metrics.js';
+import type { SectorContext } from '../models/scraperTypes.js';
 import type { ScrapeOptions } from '../types.js';
 import { validateOutput } from '../output/validator.js';
 import { writeRunReports } from '../output/runReport.js';
 import { makeSession } from '../session/session.js';
 import { sleep } from '../utils/delay.js';
 import { discoverSectors } from './sectorDiscovery.js';
-import { scrapeSector, type SectorContext } from './sectorScraper.js';
+import { scrapeSector } from './sectorScraper.js';
 import type { JudicialDocument } from '../types.js';
 import * as display from '../display/terminal.js';
 

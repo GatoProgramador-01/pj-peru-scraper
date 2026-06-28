@@ -2,7 +2,8 @@ import { logger } from '../logger.js';
 import { ROWS_PER_PAGE } from '../config/constants.js';
 import * as display from '../display/terminal.js';
 import type { $Root, ParsedPage, ParsedRow, Session } from '../models/internalTypes.js';
-import type { PageEvent, PdfFailure, RunMetrics } from '../models/metrics.js';
+import type { RunMetrics } from '../models/metrics.js';
+import type { AdvancePageCtx, PageMetrics, SectorContext, SectorResult } from '../models/scraperTypes.js';
 import type { JudicialDocument, ScrapeOptions, SiteConfig } from '../types.js';
 import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js';
 import { fetchNextPage } from '../jsf/pagination.js';
@@ -17,22 +18,6 @@ import { jitter } from '../utils/delay.js';
 import { emptyPdfStats, downloadPagePdfs } from './pdfBatch.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-/** Outcome of scraping one sector: document count and collected records. */
-export interface SectorResult {
-  count: number;
-  docs: JudicialDocument[];
-}
-
-/** Mutable runtime state shared across all pages of a single sector scrape (metrics, events, limits). */
-export interface SectorContext {
-  sectorId: string | null;
-  sectorName: string | null;
-  metrics: RunMetrics;
-  failedPdfs: PdfFailure[];
-  pageEvents: PageEvent[];
-  runLimit: number | null;
-}
 
 // ─── Module-level constants ───────────────────────────────────────────────────
 
@@ -59,8 +44,6 @@ const richFacesMissingNextButton = (page: ParsedPage): boolean =>
 
 const paginatorHidTotalPages = (page: ParsedPage): boolean =>
   page.totalRecords !== null && page.totalPages === null;
-
-interface PageMetrics { docsPerMin: number | null; pagesPerMin: number | null; pdfRate: number }
 
 const calcPageMetrics = (
   totalScraped: number,
@@ -109,13 +92,6 @@ const buildNextPage = (
     totalRecords: pag?.totalRecords ?? current.totalRecords,
   };
 };
-
-interface AdvancePageCtx {
-  page: ParsedPage;
-  pageIndex: number;
-  sectorId: string | null;
-  useRichFaces: boolean;
-}
 
 const advancePage = (
   session: Session,

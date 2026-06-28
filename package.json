@@ -34,7 +34,7 @@
     "scrape:pjperu:suprema:years:resume": "npm run build && node scripts/parallel-suprema-years.mjs --from-year 2007 --to-year 2026 --concurrency 12 --resume",
     "scrape:pjperu:suprema:years:retry": "npm run build && node scripts/parallel-suprema-years.mjs --years 2010,2013,2015,2016,2017,2018,2021,2022,2024,2025 --concurrency 1 --resume",
     "scrape:pjperu:suprema:years:dry": "npm run build && node scripts/parallel-suprema-years.mjs --years 2026,2025,2024,2023 --dry-run --concurrency 4",
-    "scrape:pjperu:suprema:years:test": "npm run build && node scripts/parallel-suprema-years.mjs --years 2026,2025,2024,2023 --limit 500 --concurrency 4"
+    "scrape:pjperu:suprema:years:test": "npm run build && node scripts/parallel-suprema-years.mjs --years 2026,2025,2024,2023 --limit 500 --concurrency 4 --pdfs --pdf-concurrency 5"
   },
   "dependencies": {
     "axios": "^1.18.1",
