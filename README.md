@@ -144,7 +144,20 @@ Lanza 34 workers de distrito con límite de 50 docs cada uno. Al terminar, revis
 
 Métricas reales medidas en run 2026-06-27 con VPN peruana compartida.
 
-### PJ Peru — Corte Suprema (sin PDFs, metadata pura)
+### Totales del día
+
+| Portal | Docs extraídos | PDFs descargados | Tiempo |
+| --- | --- | --- | --- |
+| PJ Peru Suprema | 43,000+ | 0 (metadata pura — PDFs opcionales) | 75 min |
+| PJ Peru Superior | ~9,500 (19 distritos × 500) | **499** | 25m56s |
+| OEFA | 730 | **670** | ~14 min |
+| **TOTAL** | **~53,000+** | **1,169** | — |
+
+---
+
+### PJ Peru — Corte Suprema (metadata pura, PDFs opcionales)
+
+Suprema tiene 207,527 resoluciones. El run de validación extrajo metadata a máxima velocidad sin PDFs — los PDFs se pueden agregar en segunda fase con `--pdfs`.
 
 | Métrica | Valor |
 | --- | --- |
@@ -152,13 +165,17 @@ Métricas reales medidas en run 2026-06-27 con VPN peruana compartida.
 | Velocidad por worker | 80–120 docs/min |
 | Velocidad agregada | ~800–1,000 docs/min |
 | Docs en 75 min (10 años activos) | 43,000+ |
+| PDFs descargados | 0 — run de metadata; agregar `--pdfs` para descargarlos |
 | 429 detectados | 0 — el portal usa soft-block silencioso |
 | Años con soft-block | 12/20 — solucionados con `years:retry` |
 | Velocidad en retry (concurrency 1) | 105–120 docs/min — 46% más rápido que en paralelo |
 
 ```bash
-# Para ver la velocidad sin esperar PDFs:
-npm run scrape:pjperu:suprema:years:test   # 4 años × 500 docs en ~5 min
+# Metadata pura (sin PDFs) — más rápido, valida el dataset completo:
+npm run scrape:pjperu:suprema:years:test
+
+# Con PDFs — agrega --pdfs al comando en package.json o usa pdfConcurrency:
+node scripts/parallel-suprema-years.mjs --years 2024 --pdfs --pdf-concurrency 5
 ```
 
 ### PJ Peru — Corte Superior (con PDFs)
