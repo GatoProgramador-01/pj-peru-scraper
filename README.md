@@ -192,7 +192,12 @@ npm run scrape:pjperu:suprema:years:retry
 
 ## Artefactos De Ejecucion
 
-Cada corrida escribe en su propia carpeta `output/runs/YYYY-MM-DD-HHMM/`. Los PDFs van a `output/pdfs/` compartido (nombres idempotentes).
+La carpeta de salida depende del comando:
+- Scripts nombrados (`scrape:oefa:test100`, etc.) → carpeta fija definida en el script
+- `scrape:pjperu:districts` → `output/runs/YYYY-MM-DD-HHMM/` con timestamp por corrida
+- `scrape:oefa:parallel` → `output/oefa/` con un archivo por sector
+
+Los PDFs van a una carpeta compartida entre corridas ya que sus nombres son idempotentes (mismo expediente = mismo archivo).
 
 | Archivo | Proposito | Cuando aparece |
 | --- | --- | --- |
@@ -209,19 +214,26 @@ Cada corrida escribe en su propia carpeta `output/runs/YYYY-MM-DD-HHMM/`. Los PD
 ```mermaid
 flowchart TD
     CLI["npm script / CLI"] --> Config["SiteConfig"]
-    Config --> Session["Sesion HTTP"]
-    Session --> Start["GET pagina inicial"]
-    Start --> Search["POST busqueda JSF"]
-    Search --> Page["Parsear filas + paginador + ViewState"]
-    Page --> Docs["JudicialDocument[]"]
-    Docs --> Pdfs{"--pdfs?"}
-    Pdfs -->|Si| Download["Descargar PDFs"]
-    Pdfs -->|No| Output["JSONL + reportes"]
-    Download --> Output
-    Page --> Next{"Siguiente pagina?"}
-    Next -->|Si| PagePost["POST paginacion AJAX"]
-    PagePost --> Page
-    Next -->|No| Output
+    Config --> Session["Sesion HTTP\naxios + cookie jar"]
+    Session --> GET["GET pagina inicial\n→ JSESSIONID + ViewState"]
+    GET --> Search{"config.search?"}
+    Search -->|Si| SearchPOST["POST busqueda JSF\n→ primera pagina de resultados"]
+    Search -->|No| Parse
+    SearchPOST --> Parse["Parsear filas + paginador + ViewState"]
+    Parse --> Empty{"0 filas?"}
+    Empty -->|"Si y hasNextPage"| SoftBlock["soft_block_warning\n→ abort al 3er consecutivo"]
+    Empty -->|"No (fin natural)"| Output
+    Empty -->|No| MapDocs["Mapear a JudicialDocument[]"]
+    MapDocs --> Pdfs{"--pdfs?"}
+    Pdfs -->|Si| Download["Descargar PDFs\nconcurrentes por pagina"]
+    Pdfs -->|No| Collect["Acumular docs en memoria"]
+    Download --> Collect
+    Collect --> HasNext{"hasNextPage?"}
+    HasNext -->|Si| AJAX["POST paginacion AJAX\nViewState + numero pagina"]
+    AJAX --> Parse
+    HasNext -->|No| Output
+    SoftBlock -->|abort| Output
+    Output["Escribir JSONL\n+ run-summary + page-events\n+ checkpoint"]
 ```
 
 ## PDFs
@@ -307,14 +319,19 @@ Lee en este orden. Cada capa depende de la anterior.
 
 Cada archivo tiene una sola responsabilidad. Los orquestadores (`sectorScraper.ts`, `scraper.ts`) usan comentarios de seccion (`// ── Fase ──`) para que la ejecucion se lea como una narrativa lineal sin tener que rastrear funciones auxiliares.
 
-**Helpers (funciones puras, sin efectos de red ni disco):**
+**Helpers de calculo (sin red ni disco):**
 
 | Archivo | Que hace |
 | --- | --- |
-| `src/scraper/sectorHelpers.ts` | Limites, duraciones, deteccion de condiciones de paginador |
-| `src/scraper/paginationHelpers.ts` | Avance de pagina, fusion de estado, resolucion de siguiente pagina |
-| `src/scraper/softBlock.ts` | Detecta y registra el patron soft-block (HTTP 200 con AJAX vacio consecutivo) |
-| `src/scraper/pageEvents.ts` | Construye eventos de pagina (exito/soft-block) para el reporte de ejecucion |
+| `src/scraper/sectorHelpers.ts` | Limites, duraciones y deteccion de condiciones del paginador — funciones puras |
+| `src/scraper/paginationHelpers.ts` | Fusion de estado de pagina y resolucion de siguiente pagina; `advancePage` hace el POST HTTP |
+
+**Deteccion y eventos:**
+
+| Archivo | Que hace |
+| --- | --- |
+| `src/scraper/softBlock.ts` | Evalua contador de paginas vacias y emite warn/abort con log estructurado |
+| `src/scraper/pageEvents.ts` | Construye y loguea el evento `PageEvent` por cada pagina procesada |
 
 **Bucle de paginacion (sectorScraper):**
 
