@@ -122,17 +122,23 @@ Lanza 34 workers de distrito con límite de 50 docs cada uno. Al terminar, revis
 | Script | Uso |
 | --- | --- |
 | `npm run build` | Compila TypeScript |
-| `npm run scrape:oefa:test100` | ejecución controlada de 100 documentos OEFA + PDFs |
-| `npm run scrape:oefa:mineria` | Sector MINERIA desde cero |
-| `npm run scrape:oefa:mineria:resume` | Retoma MINERIA desde checkpoint |
-| `npm run scrape:oefa:parallel` | Los 5 sectores OEFA en paralelo (~3 min total vs ~12 min secuencial) |
-| `npm run scrape:oefa:parallel:dry` | Dry-run paralelo para validar sin escribir datos |
+| `npm run ci` | Typecheck + build + lint + tests — validacion completa |
+| `npm run verify:local` | Build + simulacion 429 sin VPN ni red externa |
 | `npm run simulate:429` | Prueba local de backoff 429, sin depender del servidor real |
 | `npm run probe:oefa:429` | Probe agresivo contra OEFA real para observar si emite 429 |
-| `npm run verify:local` | Build + simulacion 429, sin VPN ni red externa |
+| `npm run scrape:oefa:test100` | ejecución controlada de 100 documentos OEFA + PDFs |
+| `npm run scrape:oefa:parallel` | Los 5 sectores OEFA en paralelo (~3 min total vs ~12 min secuencial) |
+| `npm run scrape:oefa:parallel:resume` | Retoma ejecución OEFA paralela desde checkpoint |
+| `npm run scrape:oefa:parallel:dry` | Dry-run paralelo OEFA sin escribir datos |
 | `npm run scrape:pjperu:districts:dry` | Smoke test PJ Peru Superior por distritos, requiere VPN |
-| `npm run scrape:pjperu:districts:test` | Prueba acotada con PDFs por distritos, requiere VPN |
-| `npm run scrape:pjperu:suprema:years:test` | Prueba acotada de Corte Suprema por anios, requiere VPN |
+| `npm run scrape:pjperu:districts:test` | Prueba acotada con PDFs por distritos (~5 min, requiere VPN) |
+| `npm run scrape:pjperu:districts` | Extraccion completa Superior 34 distritos (~3h con VPN) |
+| `npm run scrape:pjperu:districts:resume` | Retoma distritos desde checkpoint |
+| `npm run scrape:pjperu:suprema:years:dry` | Dry-run Suprema 4 años sin escribir datos, requiere VPN |
+| `npm run scrape:pjperu:suprema:years:test` | Prueba acotada Suprema 4 años × 500 docs, requiere VPN |
+| `npm run scrape:pjperu:suprema:years` | Extraccion completa Suprema 2007–2026 (~2h con VPN) |
+| `npm run scrape:pjperu:suprema:years:resume` | Retoma Suprema desde checkpoint |
+| `npm run scrape:pjperu:suprema:years:retry` | Reintenta años con soft-block a concurrency 1 (ver `docs/retry-policy.md`) |
 
 ## Arquitectura
 
@@ -398,7 +404,7 @@ output/pjperu-districts/
 
 ### Retry De Distritos Fallidos
 
-Los distritos que terminaron con pocos registros (AYACUCHO, CALLAO, LIMA\_NORTE, CANETE, AMAZONAS, HUANUCO) fallaron por saturacion del pool JSF en el primer batch. Se pueden reintentar individualmente con `--concurrency 1` para que no compitan con ningun otro worker:
+Los distritos que terminaron con pocos registros (AYACUCHO, CALLAO, LIMA\_NORTE, CANETE, AMAZONAS, HUANUCO) fallaron por saturacion del pool JSF en el primer batch. Se pueden reintentar individualmente con `--concurrency 1` para que no compitan con ningun otro worker. El mismo patron aplica a Suprema — ver `docs/retry-policy.md` para el analisis completo y evidencia empirica (82 → 120 docs/min).
 
 ```bash
 # Un distrito a la vez — sin competencia, sin saturacion
@@ -471,10 +477,11 @@ El dataset completo (~666k docs) no requiere descargarse de una sola vez. La est
 ### Opcion A — Distritos paralelos (recomendada, ~4h total)
 
 ```bash
-# Suprema en un proceso + Superior en 34 distritos paralelos
-node dist/cli.js --site pj-peru --sector 1 --out output/pjperu-suprema.jsonl &
+# Suprema en paralelo por año + Superior en 34 distritos paralelos
+npm run scrape:pjperu:suprema:years &
 npm run scrape:pjperu:districts
-# El bottleneck es Suprema (~4h sin PDFs). Superior termina en ~2h.
+# Suprema termina en ~2h. Superior en ~3h. Corren en paralelo.
+# Si algún año de Suprema hace soft-block: npm run scrape:pjperu:suprema:years:retry
 ```
 
 ### Opcion B — Solo metadatos primero, PDFs despues

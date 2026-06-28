@@ -69,6 +69,8 @@ Observed and documented speedups:
 | OEFA sectors | ~12 min sequential | ~3 min parallel | ~4x by sector parallelism |
 | PJ Peru Superior metadata | ~51h serial estimate | ~3h district parallel estimate | up to ~17x wall-clock reduction |
 | PJ Peru full strategy | ~666k docs serial bottleneck | Suprema + Superior in parallel | bounded by slowest partition group |
+| Suprema metadata (parallel) | serial baseline N/A | 12 workers × ~84 docs/min avg · 43,000+ docs in ~75 min | Empirical — run 2026-06-27 |
+| Suprema retry (solo) | 12-worker parallel run | 1 worker × 120 docs/min | 46% faster than parallel mode — Empirical, pool contention eliminated (run 2026-06-27) |
 
 The biggest improvement is architectural, not micro-optimization: partitioning independent searches and running them concurrently.
 
@@ -95,8 +97,8 @@ Use a bounded run instead of scraping all day:
 ```bash
 curl -s https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml -o /dev/null -w "%{http_code}\n"
 npm run build
-node scripts/parallel-districts.mjs --dry-run --limit 5 --concurrency 5
-node scripts/parallel-districts.mjs --limit 500 --concurrency 12 --pdf-concurrency 15 --pdfs
+npm run scrape:pjperu:districts:dry
+npm run scrape:pjperu:districts:test
 ```
 
 Do not use `--fresh-output`.
@@ -106,16 +108,33 @@ Do not use `--fresh-output`.
 Suprema has no district partition, so the safe parallelization strategy is to split by disjoint filters such as year:
 
 ```bash
-node scripts/parallel-suprema-years.mjs --from-year 2007 --to-year 2026 --concurrency 8
+npm run scrape:pjperu:suprema:years
 ```
 
 For a safer first validation:
 
 ```bash
-node scripts/parallel-suprema-years.mjs --years 2026,2025,2024,2023 --limit 500 --concurrency 4
+npm run scrape:pjperu:suprema:years:test
+```
+
+To retry soft-blocked years with no pool contention:
+
+```bash
+npm run scrape:pjperu:suprema:years:retry  # soft-blocked years, concurrency 1
 ```
 
 This keeps workers disjoint and avoids duplicate pages. Start with JSONL-only for speed measurement; add PDFs only after the metadata path is stable.
+
+## JSF Soft-Block Detection
+
+PJ Peru does not emit HTTP 429. Instead it returns empty AJAX partial responses when the ViewState pool saturates. The scraper detects this after 3 consecutive empty pages (`CONSECUTIVE_EMPTY_ABORT = 3`), saves a checkpoint, and exits with code 1.
+
+Empirical evidence from run 2026-06-27:
+- 12 parallel workers: 82–89 docs/min per worker; 12 of 20 years soft-blocked over time
+- Retry with `--concurrency 1`: 120 docs/min — 46% faster, zero soft-blocks
+- Conclusion: the limit is ViewState pool concurrency, not server rate limiting
+
+Full policy documented in `docs/retry-policy.md`.
 
 ## Interview Narrative
 

@@ -8,6 +8,7 @@ This plan is for a reviewer cloning the repository into a clean folder and verif
 git clone <PUBLIC_REPO_URL>
 cd pj-peru-scraper
 npm install
+# prepare hook runs npm run build automatically
 ```
 
 ## 2. Offline Checks
@@ -89,17 +90,25 @@ Expected:
 
 ## 7. Suprema Scale Path
 
-Suprema has no district filter, so it is partitioned by year.
+Suprema has no district filter, so it is partitioned by year. Start with a dry run to validate without waiting for real results.
+
+```bash
+npm run scrape:pjperu:suprema:years:dry
+```
+
+For a bounded test with real data (4 recent years, max 500 docs each, ~10 min with VPN):
 
 ```bash
 npm run scrape:pjperu:suprema:years:test
 ```
 
-Expected:
+If any year exits with code 1 (`soft_block_abort` in page-events.jsonl), retry those years with concurrency 1:
 
-- Separate year workers run disjoint searches.
-- Output writes to `output/runs/suprema-years-*/`.
-- Completed years merge into `all-suprema-years.jsonl`.
+```bash
+npm run scrape:pjperu:suprema:years:retry
+```
+
+Expected when retry runs: `120+ docs/min` per year (46% faster than parallel mode — no ViewState pool contention). See `docs/retry-policy.md` for the full explanation.
 
 ## 8. What Not To Do
 
@@ -107,16 +116,18 @@ Expected:
 - Do not delete `output/pdfs/` or any previous PDF store during validation.
 - Do not launch full PJ Peru extraction without confirming VPN and available runtime.
 - Do not judge missing/confidential PDFs as scraper failures without checking `failed-pdfs.json`.
+- Do not interpret `soft_block_abort` exit 1 as a scraper bug — see `docs/retry-policy.md` for detection logic and retry strategy.
 
 ## 9. Reviewer Reading Order
 
 1. `README.md`
-2. `docs/interview-deliverable.md`
-3. `src/config.ts`
-4. `src/session/session.ts`
-5. `src/session/retry.ts`
-6. `src/jsf/searchForm.ts`
-7. `src/jsf/pagination.ts`
-8. `src/parser/rowParser.ts`
-9. `src/scraper/sectorScraper.ts`
-10. `src/pdf/downloader.ts`
+2. `docs/retry-policy.md`
+3. `docs/interview-deliverable.md`
+4. `src/config.ts`
+5. `src/session/session.ts`
+6. `src/session/retry.ts`
+7. `src/jsf/searchForm.ts`
+8. `src/jsf/pagination.ts`
+9. `src/parser/rowParser.ts`
+10. `src/scraper/sectorScraper.ts`
+11. `src/pdf/downloader.ts`
