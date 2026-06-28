@@ -2,6 +2,7 @@
   "name": "pj-peru-scraper",
   "version": "1.0.0",
   "description": "TypeScript HTTP scraper for Peruvian judicial portals — axios + cheerio, no browser automation",
+  "engines": { "node": ">=20.19" },
   "type": "module",
   "scripts": {
     "prepare": "npm run build",
