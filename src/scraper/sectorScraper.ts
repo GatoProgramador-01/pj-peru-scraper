@@ -1,15 +1,12 @@
 import { logger } from '../logger.js';
 import { ROWS_PER_PAGE } from '../config/constants.js';
 import * as display from '../display/terminal.js';
-import type { $Root, ParsedPage, ParsedRow, Session } from '../models/internalTypes.js';
-import type { RunMetrics } from '../models/metrics.js';
-import type { AdvancePageCtx, PageMetrics, SectorContext, SectorResult } from '../models/scraperTypes.js';
+import type { Session } from '../models/internalTypes.js';
+import type { SectorContext, SectorResult } from '../models/scraperTypes.js';
 import type { JudicialDocument, ScrapeOptions, SiteConfig } from '../types.js';
 import { loadCheckpoint, saveCheckpoint } from '../checkpoint/checkpointManager.js';
-import { fetchNextPage } from '../jsf/pagination.js';
 import { submitSearch } from '../jsf/searchForm.js';
 import { parsePage } from '../parser/pageParser.js';
-import { pageHasNext, parsePaginatorText } from '../parser/paginatorParser.js';
 import { parseRows } from '../parser/rowParser.js';
 import { rowToDocument } from '../parser/documentMapper.js';
 import { fetchStartPage } from '../session/session.js';
@@ -18,119 +15,36 @@ import { jitter } from '../utils/delay.js';
 import { emptyPdfStats, downloadPagePdfs } from './pdfBatch.js';
 import { handleSoftBlock } from './softBlock.js';
 import { buildPageEvent, logPageScraped } from './pageEvents.js';
+import { buildNextPage, advancePage, tryAdvancePage } from './paginationHelpers.js';
+import {
+  elapsedSince,
+  hasReachedDocLimit,
+  isSoftBlock,
+  shouldDownloadPdfs,
+  richFacesMissingNextButton,
+  paginatorHidTotalPages,
+  calcPageMetrics,
+} from './sectorHelpers.js';
 
-// --- Pagination helpers ---
-
-const resolveHasNextPage = (
-  $: $Root,
-  pag: ReturnType<typeof parsePaginatorText>,
-  current: ParsedPage,
-  nextPageIdx: number,
-  rows: ParsedRow[],
-): boolean => {
-  if (pag) return pageHasNext($);
-  if (current.totalPages != null) return nextPageIdx < current.totalPages;
-  return pageHasNext($) || rows.length >= ROWS_PER_PAGE;
-};
-
-const buildNextPage = (
-  current: ParsedPage,
-  $: $Root,
-  newViewState: string | null,
-  nextRows: ParsedRow[],
-  nextPageIdx: number,
-): ParsedPage => {
-  const pag = parsePaginatorText($);
-  return {
-    ...current,
-    viewState: newViewState ?? current.viewState,
-    rows: nextRows,
-    hasNextPage: resolveHasNextPage($, pag, current, nextPageIdx, nextRows),
-    currentPage: pag?.currentPage ?? nextPageIdx + 1,
-    totalPages: pag?.totalPages ?? current.totalPages,
-    totalRecords: pag?.totalRecords ?? current.totalRecords,
-  };
-};
-
-const advancePage = (
-  session: Session,
-  config: SiteConfig,
-  ctx: AdvancePageCtx,
-  metrics: RunMetrics,
-): Promise<{ $: $Root; newViewState: string | null }> =>
-  withRetry(
-    () => fetchNextPage(session, config.startUrl, {
-      page: ctx.page,
-      targetPageIndex: ctx.pageIndex + 1,
-      rowsPerPage: ROWS_PER_PAGE,
-      useRichFaces: ctx.useRichFaces,
-    }),
-    config.timing.retryWaitMs,
-    `page-${ctx.pageIndex + 1}-sector-${ctx.sectorId}`,
-    metrics,
-  );
-
-// --- Pure helpers ---
-
-const elapsedSince = (startMs: number): string => {
-  const sec = Math.round((Date.now() - startMs) / 1000);
-  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
-};
-
-const hasReachedDocLimit = (total: number, limit: number | null): boolean =>
-  limit !== null && total >= limit;
-
-const isSoftBlock = (hasNext: boolean, pageIndex: number): boolean =>
-  hasNext && pageIndex > 0;
-
-const shouldDownloadPdfs = (pdfDir: string | null | undefined, dryRun: boolean): boolean =>
-  Boolean(pdfDir) && !dryRun;
-
-const richFacesMissingNextButton = (page: ParsedPage): boolean =>
-  !page.hasNextPage && page.totalPages === null && page.rows.length >= ROWS_PER_PAGE;
-
-const paginatorHidTotalPages = (page: ParsedPage): boolean =>
-  page.totalRecords !== null && page.totalPages === null;
-
-const calcPageMetrics = (
-  totalScraped: number,
-  pageIndex: number,
-  elapsedMs: number,
-  pagePdfMs: number,
-  pdfCompleted: number,
-): PageMetrics => {
-  const elapsedSec = elapsedMs / 1000;
-  const docsPerMin = elapsedSec > 5 ? Math.round((totalScraped / elapsedSec) * 60) : null;
-  const pagesPerMin = elapsedSec > 5 ? Math.round(((pageIndex + 1) / elapsedSec) * 60 * 10) / 10 : null;
-  const pagePdfSec = Math.max(1, pagePdfMs / 1000);
-  const pdfRate = Math.round((pdfCompleted / pagePdfSec) * 60);
-  return { docsPerMin, pagesPerMin, pdfRate };
-};
-
-// --- Advance page helper ---
-
-const tryAdvancePage = async (
-  session: Session, config: SiteConfig,
-  ctx: AdvancePageCtx, metrics: RunMetrics,
-  totalScraped: number, page: ParsedPage,
-): Promise<{ $: $Root; newViewState: string | null } | 'done'> => {
-  if (page.totalRecords !== null && totalScraped >= page.totalRecords) {
-    logger.info('All records collected - sector complete', { sectorId: ctx.sectorId, totalScraped, totalRecords: page.totalRecords });
-    return 'done';
-  }
-  if (config.timing.pageDelayMs[1] > 0) await jitter(...config.timing.pageDelayMs);
-  try {
-    return await advancePage(session, config, ctx, metrics);
-  } catch (err) {
-    logger.warn('Page advance failed after all retries — treating as end of results', {
-      sectorId: ctx.sectorId, pageIndex: ctx.pageIndex, error: (err as Error).message,
-    });
-    return 'done';
-  }
-};
-
-// --- Main scraper ---
-
+/**
+ * Scrapes all pages for a single sector, collecting documents and optionally downloading PDFs.
+ *
+ * @remarks
+ * Execution phases (in order):
+ * 1. **Resume check** — if `opts.resume` is set and a completed checkpoint exists, returns early.
+ * 2. **Bootstrap** — GETs the portal start page to obtain a JSESSIONID cookie and ViewState token.
+ * 3. **Search submit** — POSTs the search form with the sector filter; skips when `config.search` is absent.
+ * 4. **Pagination loop** — iterates pages until the last page, doc limit, or a soft-block abort.
+ *    - Each page: maps rows → documents → optional PDF batch → appends to collected array.
+ *    - Soft-block detection: 3 consecutive empty pages with `hasNextPage=true` triggers abort.
+ * 5. **Checkpoint save** — marks the sector as completed (used by `--resume` on the next run).
+ *
+ * @param session - Axios session with cookie jar; created fresh per sector by `scrapeSectorWithRetry`
+ * @param config - Static site configuration (selectors, timing, search form, column map)
+ * @param opts - Runtime CLI options (limit, dryRun, pdfDir, resume, districtId, etc.)
+ * @param ctx - Mutable sector context: metrics, failedPdfs, pageEvents shared across the run
+ * @returns `{ count, docs }` — count of documents scraped and the collected records (empty on dry-run)
+ */
 export const scrapeSector = async (
   session: Session,
   config: SiteConfig,
@@ -195,8 +109,8 @@ export const scrapeSector = async (
       `${page.totalRecords ?? '?'} records · ${page.totalPages ?? '?'} pages · ${elapsedSince(sectorStart)}`,
     );
 
-    // Portals like pj-peru (RichFaces) don't render paginator buttons on initial GET —
-    // if hasNextPage is false but we got a full page and totalPages is unknown, assume more.
+    // PJ Peru (RichFaces) does not render paginator buttons on the initial GET —
+    // if hasNextPage is false but a full page returned and totalPages is unknown, assume more.
     if (richFacesMissingNextButton(page)) page = { ...page, hasNextPage: true };
 
     logger.info('Search submitted - first page received', {
@@ -283,7 +197,12 @@ export const scrapeSector = async (
     pageEvents.push(buildPageEvent(site, sectorId, sectorName, pageIndex, page, toWrite, metrics, runLimit, pagePdfStats, elapsed));
 
     if (!page.hasNextPage) {
-      logger.info('Last page - sector complete', { sector: `${sectorId}=${sectorName}`, pagesProcessed: pageIndex + 1, totalScraped, elapsed: elapsedSince(sectorStart) });
+      logger.info('Last page - sector complete', {
+        sector: `${sectorId}=${sectorName}`,
+        pagesProcessed: pageIndex + 1,
+        totalScraped,
+        elapsed: elapsedSince(sectorStart),
+      });
       break;
     }
 
