@@ -44,7 +44,7 @@ export interface RunMetrics {
 }
 
 export interface PageEvent {
-  type: 'pageScraped';
+  type: 'pageScraped' | 'soft_block_warning' | 'soft_block_abort';
   site: string;
   sectorId: string | null;
   sectorName: string | null;

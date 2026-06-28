@@ -3,6 +3,8 @@ const RATE_LIMIT_SIGNALS = [
   'access denied', 'rate limit', 'por favor espere', 'please wait',
 ];
 
+const DEFAULT_RETRY_AFTER_MS = 60_000;
+
 export const isRateLimited = (html: string): boolean =>
   RATE_LIMIT_SIGNALS.some(s => html.toLowerCase().includes(s));
 
@@ -14,11 +16,11 @@ export const extract429WaitMs = (err: unknown): number => {
   const axiosErr = err as { response?: { status?: number; headers?: Record<string, string | string[]> } };
   if (axiosErr?.response?.status !== 429) return 0;
   const ra = axiosErr.response?.headers?.['retry-after'];
-  if (!ra) return 60_000;
+  if (!ra) return DEFAULT_RETRY_AFTER_MS;
   const val = Array.isArray(ra) ? ra[0] : ra;
   const seconds = Number(val);
   if (!isNaN(seconds)) return seconds * 1_000;
   const httpDate = new Date(val);
   if (!isNaN(httpDate.getTime())) return Math.max(0, httpDate.getTime() - Date.now());
-  return 60_000;
+  return DEFAULT_RETRY_AFTER_MS;
 };

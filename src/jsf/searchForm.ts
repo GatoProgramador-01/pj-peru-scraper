@@ -10,17 +10,47 @@ import { absorbCookies, cookieHeader } from '../session/cookies.js';
 import { isRateLimited } from '../session/rateLimit.js';
 import { extractPartialResponse } from './partialResponse.js';
 
+/** Identifies the portal endpoint and current page state required before submitting a search form. */
+export interface SearchTarget {
+  url: string;
+  page: ParsedPage;
+  config: SiteConfig;
+}
+
+/** Optional runtime narrowing applied on top of static SearchConfig: sector, district, and field overrides. */
+export interface SearchFilter {
+  sectorId?: string | null;
+  districtId?: string | null;
+  searchFields?: Record<string, string>;
+}
+
+const appendSearchOverrides = (
+  params: [string, string][],
+  sectorField: string | undefined,
+  filter: SearchFilter,
+): void => {
+  const { sectorId, districtId, searchFields } = filter;
+  if (sectorId && sectorField) params.push([sectorField, sectorId]);
+  if (districtId) params.push(['formBuscador:buDistrito', districtId]);
+  if (searchFields) params.push(...Object.entries(searchFields));
+};
+
 export const submitSearch = async (
   session: Session,
-  url: string,
-  page: ParsedPage,
-  config: SiteConfig,
-  sectorId?: string | null,
+  target: SearchTarget,
+  filter: SearchFilter = {},
 ): Promise<ParsedPage> => {
+  const { url, page, config } = target;
   if (!config.search) return page;
 
   const { buttonId, buttonValue, formId, fields, ajax, sectorField } = config.search;
-  logger.info('Submitting search form', { buttonId, ajax, sectorId: sectorId ?? 'none' });
+  logger.info('Submitting search form', {
+    buttonId,
+    ajax,
+    sectorId: filter.sectorId ?? 'none',
+    districtId: filter.districtId ?? 'none',
+    searchFields: filter.searchFields ?? {},
+  });
 
   let params: [string, string][];
   let extraHeaders: Record<string, string>;
@@ -34,7 +64,7 @@ export const submitSearch = async (
       [formId, formId],
       ...Object.entries(fields),
     ];
-    if (sectorId && sectorField) params.push([sectorField, sectorId]);
+    appendSearchOverrides(params, sectorField, filter);
     params.push(['javax.faces.ViewState', page.viewState]);
     extraHeaders = { 'Faces-Request': 'partial/ajax', 'X-Requested-With': 'XMLHttpRequest' };
   } else {
@@ -42,7 +72,7 @@ export const submitSearch = async (
       [formId, formId],
       ...Object.entries(fields),
     ];
-    if (sectorId && sectorField) params.push([sectorField, sectorId]);
+    appendSearchOverrides(params, sectorField, filter);
     params.push([buttonId, buttonValue], ['javax.faces.ViewState', page.viewState]);
     extraHeaders = {};
   }
@@ -65,7 +95,8 @@ export const submitSearch = async (
   absorbCookies(session, resp.headers['set-cookie'] as string[] | undefined);
 
   // Handle 302 redirect → upgrade http→https and follow manually
-  if (needsRedirectUpgrade && (resp.status === 301 || resp.status === 302 || resp.status === 303)) {
+  const isRedirect = resp.status === 301 || resp.status === 302 || resp.status === 303;
+  if (needsRedirectUpgrade && isRedirect) {
     const location = resp.headers['location'] as string | undefined;
     if (!location) throw new Error('Search redirect missing Location header');
     const httpsLocation = location.replace(/^http:\/\//i, 'https://');

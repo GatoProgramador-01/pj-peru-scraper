@@ -20,6 +20,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Mirrors src/config.ts — update here if sectors change
 const SECTOR_MAP = {
   'oefa': { '1': 'MINERIA', '2': 'ELECTRICIDAD', '3': 'HIDROCARBUROS', '8': 'PESQUERIA', '9': 'INDUSTRIA' },
+  // pj-peru: buCorte 1=Corte Suprema (207k docs) | 2=Corte Superior todos los distritos (458k docs)
+  'pj-peru': { '1': 'SUPREMA', '2': 'SUPERIOR' },
 };
 
 const args = process.argv.slice(2);
@@ -46,7 +48,7 @@ if (pdfs) mkdirSync(pdfDir, { recursive: true });
 
 const entries = Object.entries(sectors);
 console.log(`\n${'='.repeat(66)}`);
-console.log(`  \u{1F431} Parallel scrape: ${site.toUpperCase()} — ${entries.length} sectors en paralelo`);
+console.log(`  Parallel scrape: ${site.toUpperCase()} -- ${entries.length} sectors en paralelo`);
 console.log(`${'='.repeat(66)}\n`);
 
 const results = await Promise.all(entries.map(([id, name]) => {
@@ -58,7 +60,7 @@ const results = await Promise.all(entries.map(([id, name]) => {
   if (dryRun) { cliArgs.push('--dry-run'); }
   if (resume) { cliArgs.push('--resume'); }
 
-  console.log(`  \u{1F638} [${id}=${name}] → ${outFile}`);
+  console.log(`  START [${id}=${name}] -> ${outFile}`);
 
   const proc = spawn('node', cliArgs, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -69,7 +71,7 @@ const results = await Promise.all(entries.map(([id, name]) => {
     buf.toString().split('\n').filter(Boolean).forEach(l => process.stderr.write(`${pad} ERR ${l}\n`)));
 
   return new Promise(res => proc.on('close', code => {
-    const icon = code === 0 ? '\u{1F63B}' : '❌';
+    const icon = code === 0 ? 'OK  ' : 'FAIL';
     console.log(`  ${icon} [${id}=${name}] exit ${code}`);
     res({ id, name, outFile, code });
   }));
@@ -85,7 +87,7 @@ console.log(`${'='.repeat(66)}\n`);
 
 if (!dryRun && ok.length > 0) {
   const mergedPath = `${outDir}/all-sectors.jsonl`;
-  console.log(`  \u{1F43E} Merging → ${mergedPath}`);
+  console.log(`  >> Merging -> ${mergedPath}`);
   const writer = createWriteStream(mergedPath, { flags: 'w' });
   for (const { outFile } of ok) {
     try { await pipeline(createReadStream(outFile), writer, { end: false }); }
@@ -95,6 +97,6 @@ if (!dryRun && ok.length > 0) {
   await new Promise(res => writer.on('finish', res));
   try {
     const kb = (statSync(mergedPath).size / 1024).toFixed(0);
-    console.log(`  \u{1F63B} Merged: ${mergedPath} (${kb} KB)\n`);
+    console.log(`  OK Merged: ${mergedPath} (${kb} KB)\n`);
   } catch {}
 }

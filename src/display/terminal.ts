@@ -12,7 +12,7 @@ export const runBanner = (
 ): void => {
   process.stdout.write('\n');
   hr('=');
-  process.stdout.write(`  🐱 ${siteName}\n`);
+  process.stdout.write(`  ${siteName}\n`);
   if (sectorLabel) process.stdout.write(`  Sector: ${sectorLabel}\n`);
   process.stdout.write(`  Salida : ${outputPath}\n`);
   if (limit !== null) process.stdout.write(`  Limite : ${limit.toLocaleString()} registros\n`);
@@ -31,7 +31,7 @@ export const sectorBanner = (
   const label = sectorName ?? sectorId ?? 'all';
   process.stdout.write('\n');
   hr('=');
-  process.stdout.write(`  😸 SECTOR ${idx} de ${total} -- ${label}`);
+  process.stdout.write(`  SECTOR ${idx} de ${total} -- ${label}`);
   if (totalRecords !== null) process.stdout.write(`  (${totalRecords.toLocaleString()} registros)`);
   process.stdout.write('\n');
   hr('=');
@@ -40,18 +40,18 @@ export const sectorBanner = (
 
 export const phaseStep = (msg: string): void => {
   if (isTTY) {
-    process.stdout.write(`  🐾 ${msg}...`);
+    process.stdout.write(`  >> ${msg}...`);
   } else {
-    process.stdout.write(`  🐾 ${msg}...\n`);
+    process.stdout.write(`  >> ${msg}...\n`);
   }
 };
 
 export const phaseOk = (msg: string, detail?: string): void => {
   const suffix = detail ? `  (${detail})` : '';
   if (isTTY) {
-    process.stdout.write(`\r  😻 ${msg}${suffix}\n`);
+    process.stdout.write(`\r  OK ${msg}${suffix}\n`);
   } else {
-    process.stdout.write(`  😻 ${msg}${suffix}\n`);
+    process.stdout.write(`  OK ${msg}${suffix}\n`);
   }
 };
 
@@ -80,20 +80,31 @@ export const pageLine = (
   pdfFail: number,
   elapsed: string,
   docsPerMin: number | null,
+  pagesPerMin: number | null = null,
 ): void => {
   const totalPagesStr = totalPages != null ? String(totalPages) : '?';
   const pct = totalRecords != null && totalRecords > 0
     ? ` (${((totalDocs / totalRecords) * 100).toFixed(1)}%)`
     : '';
   const remaining = totalRecords != null ? totalRecords - totalDocs : null;
-  const eta = docsPerMin != null && remaining != null && docsPerMin > 0
-    ? `~${Math.ceil(remaining / docsPerMin)} min`
-    : 'calculando';
+  const remainingPages = totalPages != null ? totalPages - pageNum : null;
+
+  let eta = 'calculando';
+  if (docsPerMin != null && remaining != null && docsPerMin > 0) {
+    eta = `~${Math.ceil(remaining / docsPerMin)} min`;
+  } else if (pagesPerMin != null && remainingPages != null && pagesPerMin > 0) {
+    eta = `~${Math.ceil(remainingPages / pagesPerMin)} min (est. por paginas)`;
+  }
+
   const pdfParts = [
     `${pdfOk} descargados`,
     pdfConf > 0 ? `${pdfConf} confidenciales` : null,
     pdfFail > 0 ? `${pdfFail} fallidos` : null,
   ].filter(Boolean).join(' | ');
+
+  const velocidad = docsPerMin != null
+    ? `${docsPerMin} docs/min${pagesPerMin != null ? ` | ${pagesPerMin} pag/min` : ''}`
+    : 'calculando';
 
   process.stdout.write('\n');
   hr();
@@ -102,7 +113,7 @@ export const pageLine = (
   process.stdout.write(`  + Documentos esta pagina  : ${docsThisPage}\n`);
   process.stdout.write(`    Total acumulado         : ${totalDocs}${targetDocs != null ? ` / ${targetDocs}` : ''}${pct}\n`);
   process.stdout.write(`    PDFs                    : ${pdfParts}\n`);
-  process.stdout.write(`    Velocidad               : ${docsPerMin != null ? `${docsPerMin} docs/min` : 'calculando'}\n`);
+  process.stdout.write(`    Velocidad               : ${velocidad}\n`);
   process.stdout.write(`    ETA                     : ${eta} restantes\n`);
   hr();
 };

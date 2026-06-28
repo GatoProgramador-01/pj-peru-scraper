@@ -1,6 +1,7 @@
 // Expected record count: 1,000–50,000+ per site across all sectors
 // Data source: PJ Peru jurisprudencia + OEFA TFA portals (JSF/PrimeFaces)
 
+/** Normalized output record for a single jurisprudence result, shared across all scraped portals. */
 export interface JudicialDocument {
   id: string;              // Unique ID: <site>[_S<sectorId>]_<caseNumber>_<date>
   site: string;            // 'pj-peru' | 'oefa'
@@ -8,8 +9,20 @@ export interface JudicialDocument {
   caseNumber: string;      // Número de expediente
   court: string | null;    // Sala / Juzgado / Unidad fiscalizable
   date: string | null;     // ISO date or resolution number
-  summary: string | null;  // Administrado / Sumilla
+  summary: string | null;  // Pretensión/Delito (pj-peru) or Administrado (oefa)
   resolution: string | null;
+  // pj-peru specific fields — main panel
+  tipoRecurso: string | null;    // Apelación, Casación, etc.
+  sumilla: string | null;        // Sumilla text (distinct from summary/pretensión)
+  palabrasClave: string | null;  // Palabras Clave from panel body
+  // pj-peru ficha fields — embedded in same panel, shown in "Ver Ficha" modal
+  fallo: string | null;                       // Fallo de la Resolución (Confirmada, Revocada, etc.)
+  jueces: string[] | null;                    // Lista de jueces
+  proceso: string | null;                     // Tipo de proceso (Conocimiento, Investigación Penal, etc.)
+  distritoJudicialProcedencia: string | null; // Distrito de origen del expediente
+  expedienteProcedencia: string | null;       // Número de expediente de primera instancia
+  fechaResolucionProcedencia: string | null;  // Fecha de la resolución de procedencia
+  falloProcedencia: string | null;            // Fallo de la instancia anterior
   pdfUrl: string | null;   // Absolute URL to PDF (null if confidential or JS-only)
   pdfLocalPath: string | null;
   pageIndex: number;       // 0-based page number where found
@@ -32,6 +45,7 @@ export interface Selectors {
   noResults: string | null;
 }
 
+/** Jitter and timeout knobs that control request pacing and browser wait budgets. */
 export interface TimingConfig {
   pageDelayMs: [number, number];          // [min, max] jitter between page turns
   pdfDelayMs: [number, number];           // jitter between PDF downloads
@@ -59,7 +73,7 @@ export interface SearchConfig {
   sectors?: Record<string, string>;
 }
 
-/** Maps semantic field names to 0-based column indices in rawCells. */
+/** Maps semantic field names to 0-based column indices within a row's rawCells array. */
 export interface ColumnMap {
   caseNumber: number;
   court?: number;
@@ -69,6 +83,7 @@ export interface ColumnMap {
   pdfColIndex?: number;
 }
 
+/** Full static configuration for a single scraping target (OEFA, pj-peru, etc.). */
 export interface SiteConfig {
   name: string;
   baseUrl: string;
@@ -83,6 +98,7 @@ export interface SiteConfig {
   rowParser?: 'table' | 'richfacesRepeat';
 }
 
+/** Runtime CLI options that control a single scraping run (sector, limits, output paths, flags). */
 export interface ScrapeOptions {
   site: string;
   outputPath: string;
@@ -93,9 +109,12 @@ export interface ScrapeOptions {
   proxy: string | null;
   headed: boolean;
   profile: string | null;
-  resume: boolean;         // true = load per-sector checkpoints; false = fresh start
-  sectorId: string | null; // null = scrape all sectors; string = specific sector only
-  pdfConcurrency?: number; // maximum concurrent PDF downloads per page
+  resume: boolean;           // true = load per-sector checkpoints; false = fresh start
+  sectorId: string | null;   // null = scrape all sectors; string = specific sector only
+  districtId?: string | null; // pj-peru only: override formBuscador:buDistrito
+  searchFields?: Record<string, string>; // optional site-specific search overrides
+  checkpointId?: string | null; // disambiguates parallel partitions of same sector
+  pdfConcurrency?: number;   // maximum concurrent PDF downloads per page
 }
 
 export interface Checkpoint {

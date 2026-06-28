@@ -11,6 +11,8 @@
  *   node dist/cli.js --site pj-peru --proxy http://user:pass@host:3128 --pdfs
  */
 
+import fs from 'fs';
+import path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { scrapeAll, discoverSectors } from './http-scraper.js';
@@ -21,6 +23,7 @@ import type { ScrapeOptions } from './types.js';
 // Without this, process.stdout.write() buffers in ~64 KB chunks when stdout
 // is redirected to a file (non-TTY), so Get-Content -Wait sees nothing until
 // the buffer fills or the process exits.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (process.stdout as any)._handle?.setBlocking?.(true);
 
 const argv = await yargs(hideBin(process.argv))
@@ -34,6 +37,22 @@ const argv = await yargs(hideBin(process.argv))
     type: 'string',
     describe: 'Sector ID to scrape (e.g. 1=MINERIA). Omit to scrape all sectors.',
   })
+  .option('district', {
+    type: 'string',
+    describe: 'pj-peru only: district ID to filter buDistrito (e.g. 18=Lima). Used by parallel-districts.mjs.',
+  })
+  .option('year', {
+    type: 'string',
+    describe: 'pj-peru only: year filter for formBuscador:buAnio. Useful for Suprema parallel partitions.',
+  })
+  .option('specialty', {
+    type: 'string',
+    describe: 'pj-peru only: specialty ID filter for formBuscador:buEspecialidad.',
+  })
+  .option('checkpoint-id', {
+    type: 'string',
+    describe: 'Optional checkpoint partition suffix for parallel workers on the same site/sector.',
+  })
   .option('discover-sectors', {
     type: 'boolean',
     default: false,
@@ -42,7 +61,7 @@ const argv = await yargs(hideBin(process.argv))
   .option('out', {
     type: 'string',
     default: 'output/results.jsonl',
-    describe: 'Output JSONL file (append-safe — crash-resumable)',
+    describe: 'Output JSONL file. Workers write completed partitions at the end.',
   })
   .option('pdfs', {
     type: 'boolean',
@@ -85,8 +104,6 @@ const argv = await yargs(hideBin(process.argv))
   .parseAsync();
 
 if (argv['fresh-output']) {
-  const fs = await import('fs');
-  const path = await import('path');
   fs.rmSync(argv.out, { force: true });
   fs.rmSync(path.join(path.dirname(argv.out), 'failed-pdfs.json'), { force: true });
 }
@@ -99,11 +116,12 @@ if (argv['discover-sectors']) {
   process.exit(0);
 }
 
+const outputDir = path.dirname(argv.out);
 const opts: ScrapeOptions = {
   site: argv.site,
   outputPath: argv.out,
   pdfDir: argv.pdfs ? (argv['pdf-dir'] ?? './pdfs') : null,
-  failedPdfPath: 'failed-pdfs.json',
+  failedPdfPath: path.join(outputDir, 'failed-pdfs.json'),
   limit: argv.limit ?? null,
   dryRun: argv['dry-run'],
   proxy: argv.proxy ?? null,
@@ -111,15 +129,24 @@ const opts: ScrapeOptions = {
   profile: null,
   resume: argv.resume,
   sectorId: argv.sector ?? null,
-  pdfConcurrency: Math.max(1, argv['pdf-concurrency'] ?? 1),
+  districtId: argv.district ?? null,
+  searchFields: {
+    ...(argv.year ? { 'formBuscador:buAnio': argv.year } : {}),
+    ...(argv.specialty ? { 'formBuscador:buEspecialidad': argv.specialty } : {}),
+  },
+  checkpointId: argv['checkpoint-id'] ?? null,
+  pdfConcurrency: Math.max(1, argv['pdf-concurrency']),
 };
 
-opts.failedPdfPath = `${opts.outputPath.replace(/[^/\\]+$/, '')}failed-pdfs.json`;
+if (Object.keys(opts.searchFields ?? {}).length === 0) delete opts.searchFields;
 
 logger.info('Starting scrape', {
   site: opts.site,
   dryRun: opts.dryRun,
   sectorId: opts.sectorId,
+  districtId: opts.districtId,
+  searchFields: opts.searchFields,
+  checkpointId: opts.checkpointId,
   limit: opts.limit,
   pdfDir: opts.pdfDir,
   pdfConcurrency: opts.pdfConcurrency,

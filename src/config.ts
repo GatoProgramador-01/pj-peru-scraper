@@ -29,8 +29,8 @@ export const SITES: Record<string, SiteConfig> = {
       noResults: '[id*="optResultado"]',
     },
     timing: {
-      pageDelayMs: [2500, 5500],
-      pdfDelayMs: [1200, 3500],
+      pageDelayMs: [0, 0],
+      pdfDelayMs: [0, 0],
       retryWaitMs: [8000, 16000, 35000],
       navigationTimeoutMs: 45_000,
       selectorTimeoutMs: 20_000,
@@ -40,6 +40,13 @@ export const SITES: Record<string, SiteConfig> = {
       buttonId: 'formBuscador:j_idt31',
       buttonValue: '',
       ajax: false,
+      // sectorField overrides buCorte at submit time; last occurrence wins in JSF POST body.
+      // Sector 1 = Corte Suprema (207,527 docs) | Sector 2 = Corte Superior / Todos (458,909 docs)
+      sectorField: 'formBuscador:buCorte',
+      sectors: {
+        '1': 'SUPREMA',
+        '2': 'SUPERIOR',
+      },
       fields: {
         'formBuscador:buCorte': '1',
         'formBuscador:buDistrito': '0',
