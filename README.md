@@ -15,55 +15,28 @@ El proyecto busca probar que el scraper corre de punta a punta:
 
 Evidencia actual: en una corrida real de Suprema por anio con VPN peruana, el scraper sostuvo cerca de una hora de extraccion, llego a ~43,750 documentos combinando run principal + retry, y demostro que los soft-blocks son contencion del pool JSF, no HTTP 429.
 
-## Quick Start
+## Configuracion Inicial
+
+Copiar la plantilla y editar los valores que necesites:
 
 ```bash
-npm install
-npm run build
-npm test
+cp .env.example .env
 ```
 
-Prueba local sin portales reales:
+El scraper carga `.env` automaticamente al arrancar. No es necesario exportar variables en la terminal. Ver `.env.example` para la lista completa con descripciones.
+
+Para los tests de esta guia, el `.env` recomendado es:
 
 ```bash
-npm run verify:local
+# .env — ajustes recomendados para validar el proyecto completo
+PDF_CONCURRENCY=4          # descargas PDF concurrentes por pagina (por defecto: 1)
+PROBE_429_TOTAL=100        # requests para la sonda 429 (reducir para test rapido)
+PROBE_429_CONCURRENCY=10   # concurrencia de la sonda (ajustar al umbral a testear)
 ```
 
-Smoke test OEFA, sin VPN:
+## Guia De Pruebas
 
-```bash
-npm run scrape:oefa:test100
-```
-
-Smoke test PJ Peru, con VPN o proxy peruano:
-
-```bash
-npm run scrape:pjperu:smoke
-```
-
-## Ubuntu / Windows
-
-Usar los comandos `npm run ...` como interfaz publica. Los scripts `.mjs` existen como implementacion interna, pero los wrappers npm evitan diferencias de shell entre Ubuntu, Windows y CI.
-
-En Ubuntu:
-
-```bash
-npm ci
-npm run ci
-npm run verify:local
-```
-
-Para PJ Peru, primero confirmar VPN peruana:
-
-```bash
-curl -s https://jurisprudencia.pj.gob.pe/jurisprudenciaweb/faces/page/inicio.xhtml -o /dev/null -w "%{http_code}\n"
-```
-
-Debe devolver `200` antes de correr comandos PJ Peru.
-
-## Guia De Pruebas Para El Reviewer
-
-Correr en este orden. Los primeros 3 pasos no requieren internet ni VPN.
+Correr en este orden. Los comandos npm funcionan igual en Ubuntu, Windows y CI — no invocar los scripts `.mjs` directamente. Los primeros 3 pasos no requieren internet ni VPN.
 
 ### Paso 1 — Sin internet (verificacion estatica)
 
@@ -169,27 +142,6 @@ Sonda el portal OEFA con 500 requests concurrentes para encontrar el threshold d
 | `npm run scrape:pjperu:suprema:years:test` | Prueba acotada Suprema por anios |
 | `npm run scrape:pjperu:suprema:years` | Extraccion Suprema particionada por anio |
 | `npm run scrape:pjperu:suprema:years:retry` | Retry secuencial de anios con soft-block |
-
-## Configuracion Inicial: crear tu .env
-
-Copiar la plantilla y editar los valores que necesites:
-
-```bash
-cp .env.example .env
-```
-
-El scraper carga `.env` automaticamente al arrancar. No es necesario exportar variables en la terminal.
-
-Para los tests de esta guia, el `.env` recomendado es:
-
-```bash
-# .env — ajustes recomendados para validar el proyecto completo
-PDF_CONCURRENCY=4          # descargas PDF concurrentes por pagina (por defecto: 1)
-PROBE_429_TOTAL=100        # requests para la sonda 429 (reducir para test rapido)
-PROBE_429_CONCURRENCY=10   # concurrencia de la sonda (ajustar al umbral a testear)
-```
-
-Todas las variables tienen valores por defecto — el scraper funciona sin `.env`. Ver `.env.example` para la lista completa con descripciones.
 
 ## Politica De Retry Y Caso Real Encontrado
 
