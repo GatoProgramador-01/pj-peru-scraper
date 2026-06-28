@@ -267,7 +267,7 @@ Los runners internos particionan el trabajo:
 
 ## Mapa de Lectura del Codigo
 
-Lee en este orden. Cada capa depende de la anterior.
+El codigo se organiza en capas, cada una construida sobre la anterior. Si queres explorar el repositorio, este orden evita saltar entre contextos sin el setup previo.
 
 ### Capa 1 - Contratos
 
